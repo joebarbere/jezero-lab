@@ -231,14 +231,133 @@ sim-seconds unthrottled), and shuts its executor down cleanly.
 - **Done when:** a random agent runs 1,000 episodes without the sim hanging or
   leaking memory.
 
+### Phase 3 results — 2026-09-29
+
+`jezero_env/`: a Gymnasium env with **no ROS in the training loop**. Run anything
+in it through `jezero_env/run.sh` inside the `jazzy-harmonic` image.
+
+**Spike outcome: in-process gz-sim, not a ROS bridge.** ROS couldn't give
+deterministic stepping: /cmd_vel → rover node → adapter → controllers is async on
+wall time, which at 15–20× RTF is many sim-steps of lag. Instead `jezero_env/sim.py`
+runs the gz-sim server inside the Python process (`gz.sim8.TestFixture`), applies
+commands to the joints in a pre-update callback every physics step, and
+`step(n)` returns after exactly n steps. It uses the rover's own
+`osr_control.kinematics` (pure Python, no ROS imports) and upstream's adapter sign
+conventions, so an action drives the wheels exactly as `/cmd_vel` does.
+
+Parity with the ROS stack, same 5 ms step: forward **0.300 m/s** (ROS 0.298–0.301),
+rotate-in-place **−111°** / 4 s (ROS −112°), **14–15×** RTF in one process.
+
+What it took (each of these silently broke the sim until found):
+
+- **The gz Python bindings aren't in ROS's gz vendor packages.** They come from the
+  OSRF apt repo (`python3-gz-sim8`, `python3-gz-transport13`, `libgz-sim8-plugins`),
+  which installs a second, system copy of Harmonic (8.15) under `/usr`, next to
+  ROS's vendor copy (8.11). The ROS image's `LD_LIBRARY_PATH` points at the vendor
+  copy (undefined symbols), so `run.sh` sets `LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu`.
+  The ROS stack is unaffected: it still resolves the vendor `gz` (bench after the
+  change: 0.298 m/s, −112°), and the parity numbers above show the two minor
+  versions behave the same. The dartsim engine
+  plugin also needs its unversioned alias (`libgz-physics-dartsim-plugin.so`),
+  which only the -dev package ships; the image links it.
+- `import gz.math7` is required before `gz.sim8` returns poses, or pybind can't
+  convert them (hard crash in the callback).
+- **Per-instance `GZ_PARTITION`.** gz-transport is host-wide: two sims (in one
+  process, or across a `SubprocVecEnv`) advertise the same `/world/<name>/…`
+  services and answer each other's requests. Each `JezeroSim` sets its own.
+
+**Reset — the 2020 bug — took three tries:**
+
+1. `Server.reset_all()`: in gz-sim 8.15 it stops TestFixture's pre-update callback
+   from firing afterwards. The rover resets, then ignores every command.
+2. Teleport + zero every joint: `Link` velocity commands **persist every step**
+   (the body hovered, pinned at zero velocity); without them, the body keeps its
+   momentum through the teleport — after different histories, the same episode
+   drifted apart by 8 cm in 2 s.
+3. **Delete the rover and spawn a fresh one** (`/world/<name>/remove` + `create`,
+   called while the server steps in the background — the bindings release the
+   GIL, so it doesn't deadlock). A service reply only means "queued", so reset
+   steps until the old model is gone and the new one exists before continuing.
+
+Result: after three different histories (driving, spinning, reversing while
+turning), the following episode is **identical: 0.000 mm, 0.0000° spread**. Reset
+takes 160–175 ms. Gymnasium's `check_env` passes, including its same-seed reset
+check.
+
+**Settling after spawn.** The first soak (1,000 random episodes) scored 29% of
+episodes as tipped. All of them tipped on **step 1**, at 40–46° pitch, and 26 of
+27 were back to ~10° (the terrain slope) 3 s later: the rover was still rocking
+from the drop when the episode started. With fixed rockers the body pivots on the
+undamped bogie joints, and at 0.38 g that swing is slow; the fixed 1 s settle
+wasn't enough. Reset now settles until the body is still (speed < 0.01 m/s,
+angular speed < 0.02 rad/s for 0.5 s; median 3.0 sim-s, p95 4.2), and the env
+respawns with another heading if a spawn never settles (a heading across a steep
+spot). Tips from random driving after that: **0 in 120 episodes** of the
+characterisation run.
+
+**The env** (`jezero_env/env.py`):
+
+- Action `[speed, turn]` ∈ [−1, 1]² → 0.3 m/s, 0.6 rad/s → kinematics. 5 Hz control
+  (40 physics steps of 5 ms).
+- Observation, 61 floats: goal in rover frame + distance, heading error (sin/cos),
+  roll, pitch, body-frame velocities and yaw rate, previous action, and a 7×7 terrain
+  patch at 1 m spacing relative to the rover's height, sampled from the same
+  heightmap the physics collides with (rover z 3.290 vs heightmap 3.300 at spawn).
+- Reward, from 2020: progress toward the goal, a goal bonus scaled by budget left,
+  `at_destination()` bounding box (±1 m), per-step time cost; terminate with a
+  penalty on tipping past 35° or leaving the map; truncate when the step budget
+  (the "power supply": 2.5× straight-line time) runs out.
+- Reset settles the rover until it is still, and respawns with another heading if
+  it never does (see above). `info` reports `settle_time` and `spawn_attempts`.
+- Episodes are segments of Perseverance's route between waypoints; `segments=` and
+  `random_heading=` pick the start.
+
+**Baseline** (`python3 -m jezero_env.baseline`): turn toward the goal, drive, slow
+when misaligned. **Reaches every goal, all 4 segments, the whole 235 m route**,
+within ~1 m, using ~40% of the budget:
+
+| Segment | Distance | Result | Sim time | Wall |
+|---|---|---|---|---|
+| sol 437 → 441 | 33.3 m | goal, 540/1385 steps | 108 s | 5.5 s |
+| sol 441 → 448 | 104.7 m | goal, 1731/4362 | 346 s | 18.0 s |
+| sol 448 → 455 | 53.8 m | goal, 882/2238 | 176 s | 9.1 s |
+| sol 455 → 461 | 43.3 m | goal, 716/1802 | 143 s | 7.4 s |
+
+**The task is too easy as-is**: on smooth 1 m terrain a trivial controller succeeds
+100% from the default spawns, so "beat the baseline on success rate" can't be
+Phase 4's bar here. See Phase 4.
+
+**Soak — done-criterion met** (`python3 -m jezero_env.soak 1000 20`): 1,000
+random-agent episodes (random segment and heading, 20 sim-s cap), 100,000 steps in
+1,234 s:
+
+| | |
+|---|---|
+| Hangs / crashes | none |
+| Memory | +33 MB warm-up in the first 100 episodes, then +2 MB over the next 900 (~2 KB/episode: allocator noise, not a leak); peak 237 MB |
+| Throughput | 81–84 env steps/s (5 Hz control → ~16× real time), one process |
+| Reset | median ~0.2 s wall; worst 1.3 s (a respawn) |
+| Respawns | 39 (3.9%) needed a second heading to settle |
+| Terminations | 0 tipped, 0 out of bounds; all 1,000 hit the 20 s cap |
+
 ## Phase 4 — Training
 
-- Parallel envs as separate sim processes, isolated with `GZ_PARTITION` +
-  `ROS_DOMAIN_ID`. Start with 6–8, then tune based on CPU use.
+- Parallel envs as separate processes (`SubprocVecEnv`); each `JezeroSim` already
+  takes its own `GZ_PARTITION`, and there's no ROS in the loop, so no
+  `ROS_DOMAIN_ID` needed. Start with 6–8, then tune based on CPU use.
 - PPO first, then SAC. TensorBoard (replaces the 2020 ELK stack).
 - Curriculum: flat ground, then the delta slope, then boulder fields.
-- **Done when:** the policy beats a hand-written go-to-goal controller on success
-  rate across held-out spawn points.
+- **Harder variants, because the baseline already succeeds 100% on the plain
+  route:** random start headings, spawn points off the route, boulder fields (and
+  primitive collisions on rockers/bogies so high-centring is possible), steeper
+  terrain (the crater rim, sols 1244–1254).
+- **Done when:** the policy beats the hand-written go-to-goal controller
+  (`jezero_env/baseline.py`) on success rate on the harder variants, across
+  held-out spawn points, and on time-to-goal on the plain route.
+- Throughput to plan around: ~82 env steps/s per process. At 6–8 processes, ~500–650
+  env steps/s, i.e. ~2M steps/hour, before PPO's own overhead.
+- Worth trying: a little damping on the bogie joints. Real pivots have friction,
+  and it would shorten the 3 s post-spawn settle that dominates reset time.
 
 ## Phase 5 — Evaluation and demo
 

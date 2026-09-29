@@ -4,10 +4,11 @@ Local reinforcement-learning lab for the NASA-JPL Open Source Rover v4, driving 
 simulated patch of Jezero Crater. Runs entirely on one machine in Podman: no cloud,
 no NVIDIA GPU required.
 
-See [PLAN.md](PLAN.md) for the phases and measured results. **Current phase: 3**
-(Gym environment). Done so far: the OSR runs on ROS 2 Jazzy + Gazebo Harmonic, on
-256 m of real Jezero delta terrain from HiRISE, with waypoints on Perseverance's
-actual route, at ~20× real time headless.
+See [PLAN.md](PLAN.md) for the phases and measured results. **Current phase: 4**
+(training). Done so far: the OSR runs on ROS 2 Jazzy + Gazebo Harmonic, on 256 m
+of real Jezero delta terrain from HiRISE, with waypoints on Perseverance's actual
+route, and a Gymnasium environment that steps the simulator deterministically
+in-process at ~15× real time, with a clean reset.
 
 ## Setup
 
@@ -72,6 +73,31 @@ factor, forward speed, and rotate-in-place against sim time
 ([tools/bench.py](tools/bench.py)). [tools/drive_test.py](tools/drive_test.py) drives
 straight on whatever world is running and logs position and tilt.
 
+## Gym environment
+
+```python
+from jezero_env.env import JezeroEnv
+env = JezeroEnv(segments=(0, 1, 2, 3), random_heading=False)
+obs, info = env.reset(seed=0)
+obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+```
+
+Drives the OSR between waypoints on Perseverance's route. Action `[speed, turn]` in
+[−1, 1]; observation of 61 floats (goal in rover frame, tilt, velocities, previous
+action, 7×7 terrain patch). Reward and termination are documented in
+[jezero_env/env.py](jezero_env/env.py).
+
+No ROS in the loop: the gz-sim server runs inside the Python process and steps
+exactly as many physics steps as each action asks for
+([jezero_env/sim.py](jezero_env/sim.py)). It needs the system Gazebo libraries, so
+run it through `run.sh` inside the Jazzy image:
+
+```bash
+podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
+    jezero_env/run.sh python3 -m jezero_env.baseline      # hand-written controller
+# also: jezero_env.selftest (ROS parity, reset determinism), jezero_env.soak
+```
+
 ## Terrain
 
 `terrain/build_jezero_delta.sh` rebuilds the `jezero_delta` world from source: a
@@ -96,6 +122,8 @@ podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
   `jezero_delta` terrain model. Derived from upstream `osr_gazebo`; meshes are a
   symlink into the submodule.
 - `containers/`: Containerfiles for both images, `build.sh`, `run.sh`, `bench.sh`.
+- `jezero_env/`: Gymnasium env, in-process simulator wrapper, baseline controller,
+  self-test, soak test.
 - `terrain/`: DTM crop, heightmap/world generator, rebuild script.
 - `tools/`: benchmark and drive test.
 
