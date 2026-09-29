@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-ros-gz \
         ros-jazzy-ros2-controllers \
         ros-jazzy-ros2controlcli \
+        ros-jazzy-joint-state-publisher-gui \
+        ros-jazzy-ros2-control \
         ros-jazzy-teleop-twist-keyboard \
         ros-jazzy-xacro \
         gdal-bin \
