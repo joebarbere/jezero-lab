@@ -1,7 +1,7 @@
 # PR draft: Support Gazebo Harmonic on Jazzy in `osr_gazebo`
 
 Branch: `feature/gazebo-harmonic` (1 commit on `6b17c22`). Target: `nasa-jpl/osr-rover-code` `master`.
-Send after the maintainers answer `issue_harmonic_plan.md` (keep Classic alongside, or replace it).
+Send after the maintainers answer #228 (keep Classic alongside, or replace it); reference it in the PR.
 Independent of `fix/gazebo-wheel-friction`; the two merge cleanly in either order.
 
 ---
@@ -33,7 +33,7 @@ Headless, `ros2 launch osr_gazebo empty_world.launch.py gui:=false`, then `/cmd_
 | Rotate in place, 4 s | −84.1° | −83.2° | −118° |
 | IMU on `/imu_plugin/out` | ✓ | ✓ | ✓ |
 
-Rotate-in-place is faster on Harmonic: different physics engine (DART vs ODE) and wheel contact with the same mesh. Direction and forward speed agree. (Forward speed ~9% above commanded on both: the wheel-radius mismatch in #ISSUE.) The low Classic real-time factor is pre-existing, from the full-resolution collision meshes; Harmonic's physics isn't slowed by them.
+Rotate-in-place is faster on Harmonic: different physics engine (DART vs ODE) and wheel contact with the same mesh. Direction and forward speed agree. (Forward speed ~9% above commanded on both: the wheel-radius mismatch in #229.) The low Classic real-time factor is pre-existing, from the full-resolution collision meshes; Harmonic's physics isn't slowed by them.
 
 - [x] `colcon build --packages-select osr_interfaces osr_control osr_bringup osr_gazebo` on Humble and on Jazzy
 - [x] **Clean Jazzy install from the README:** `ros:jazzy-ros-base` container, only the README's `apt install` line, build, launch, drive: controllers active, same numbers as above
