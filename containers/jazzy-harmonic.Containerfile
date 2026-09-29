@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-teleop-twist-keyboard \
         ros-jazzy-xacro \
         gdal-bin \
+        ffmpeg \
         python3-gdal \
         mesa-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -33,22 +34,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg lsb-
         libgz-sim8-plugins \
         python3-gz-transport13 \
         libgz-physics7-dartsim \
+        libgz-rendering8-ogre2 \
         python3-pip \
     && pip3 install --break-system-packages --no-cache-dir gymnasium==1.2.0 \
     && rm -rf /var/lib/apt/lists/* \
-    # gz-sim asks for "gz-physics-dartsim-plugin", i.e. the unversioned alias
-    # libgz-physics-dartsim-plugin.so, which only the -dev package provides.
-    # Link it (as ROS's vendor copy does) rather than pull in the headers.
+    # gz-sim asks for "gz-physics-dartsim-plugin" (and the camera for
+    # "gz-rendering-ogre2"), i.e. unversioned aliases that only the -dev
+    # packages provide. Link them (as ROS's vendor copy does) rather than pull
+    # in the headers.
     && cd /usr/lib/x86_64-linux-gnu/gz-physics-7/engine-plugins \
     && ln -s libgz-physics7-dartsim-plugin.so.7 libgz-physics7-dartsim-plugin.so \
-    && ln -s libgz-physics7-dartsim-plugin.so libgz-physics-dartsim-plugin.so
+    && ln -s libgz-physics7-dartsim-plugin.so libgz-physics-dartsim-plugin.so \
+    && cd /usr/lib/x86_64-linux-gnu/gz-rendering-8/engine-plugins \
+    && ln -s libgz-rendering8-ogre2.so.8 libgz-rendering8-ogre2.so \
+    && ln -s libgz-rendering8-ogre2.so libgz-rendering-ogre2.so
 
 # Training: CPU-only PyTorch (the CUDA wheels are ~5 GB and there's no NVIDIA GPU
 # here), Stable-Baselines3, TensorBoard.
 RUN pip3 install --break-system-packages --no-cache-dir \
         torch --index-url https://download.pytorch.org/whl/cpu \
     && pip3 install --break-system-packages --no-cache-dir \
-        "stable-baselines3>=2.6,<3" tensorboard
+        "stable-baselines3>=2.6,<3" tensorboard matplotlib
 
 # Upstream osr_gazebo keeps its COLCON_IGNORE here: it needs Gazebo Classic,
 # which Jazzy doesn't have. osr_gz replaces it.

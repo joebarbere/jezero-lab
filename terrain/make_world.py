@@ -178,7 +178,7 @@ def main():
       <pose>{w['x']} {w['y']} {w['z'] + 1.0} 0 0 0</pose>
       <link name="link">
         <visual name="v">
-          <geometry><cylinder><radius>0.15</radius><length>2.0</length></cylinder></geometry>
+          <geometry><cylinder><radius>0.05</radius><length>2.0</length></cylinder></geometry>
           <material><ambient>0.1 0.6 1 1</ambient><diffuse>0.1 0.6 1 1</diffuse></material>
         </visual>
       </link>

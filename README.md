@@ -4,11 +4,19 @@ Local reinforcement-learning lab for the NASA-JPL Open Source Rover v4, driving 
 simulated patch of Jezero Crater. Runs entirely on one machine in Podman: no cloud,
 no NVIDIA GPU required.
 
-See [PLAN.md](PLAN.md) for the phases and measured results. **Current phase: 4**
-(training). Done so far: the OSR runs on ROS 2 Jazzy + Gazebo Harmonic, on 256 m
-of real Jezero delta terrain from HiRISE, with waypoints on Perseverance's actual
-route, and a Gymnasium environment that steps the simulator deterministically
-in-process at ~15× real time, with a clean reset.
+See [PLAN.md](PLAN.md) for the phases and every measured result. All five phases
+are done: the OSR runs on ROS 2 Jazzy + Gazebo Harmonic, on 256 m of real Jezero
+delta terrain from HiRISE, with waypoints on Perseverance's actual route and
+Mars-realistic boulder fields; a Gymnasium environment steps it deterministically
+in-process at ~15× real time; PPO policies are trained and evaluated against a
+hand-written baseline, with path plots and chase-camera video.
+
+**The honest result:** the learned policy does not beat the baseline. On smooth
+terrain the baseline is near-optimal; among boulders the policy tips over less
+but doesn't generalise to terrain it didn't train on. Details and next steps in
+PLAN.md (Phase 4 and 5 results).
+
+![Baseline (left) climbs a boulder and tips over; the policy (right) goes around it](docs/media/hard5_frame.png)
 
 ## Setup
 
@@ -98,13 +106,35 @@ podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
 # also: jezero_env.selftest (ROS parity, reset determinism), jezero_env.soak
 ```
 
+## Training and evaluation
+
+```bash
+R="podman run --rm -v $PWD:/repo:z -w /repo jezero-lab:jazzy-harmonic jezero_env/run.sh"
+$R python3 -m train.train --name ppo_rocks --world jezero_delta_rocks_k05 \
+    --rock-patch --goal-mode route --segments 0 1 2 --random-heading --spawn-jitter 10
+$R python3 -m eval.evaluate runs/ppo_rocks/final.zip --world jezero_delta_rocks_k05 \
+    --rock-patch --episodes 12 --workers 6 --out runs/eval.json
+$R python3 -m eval.plot_paths runs/eval.json --world jezero_delta_rocks_k05
+eval/make_demo.sh runs/ppo_rocks/final.zip runs/eval.json hard:5 unseen:0   # needs a display
+```
+
+`train.train` writes TensorBoard logs and checkpoints to `runs/<name>/`
+(`python3 tools/tb_summary.py runs/<name>` prints the curves). `eval.evaluate`
+runs the policy and the baseline on identical held-out spawns; `eval.plot_paths`
+draws both paths per spawn; `eval/make_demo.sh` records side-by-side chase-camera
+videos (rendered on the host GPU, so it runs the containers with the display).
+
+![Unseen segment: baseline (blue) vs policy (orange) from identical spawns](docs/media/paths_unseen.png)
+
 ## Terrain
 
 `terrain/build_jezero_delta.sh` rebuilds the `jezero_delta` world from source: a
 257 m window of the USGS Mars 2020 HiRISE DTM mosaic (1 m/px, ~22 MB read over
 HTTP, not the 1.8 GB file) and NASA's Perseverance waypoint file. The generated
 heightmap, world, and waypoint yaml are committed, so this is only needed to change
-the area.
+the area. `terrain/build_jezero_rim.sh` does the same for Perseverance's crater-rim
+climb, and `terrain/add_rocks.py` adds a Golombek–Rapp boulder field to a world,
+baked into a 12.5 cm heightmap (`jezero_delta_rocks_k03/k05/k08`).
 
 ```bash
 podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
@@ -124,8 +154,10 @@ podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
 - `containers/`: Containerfiles for both images, `build.sh`, `run.sh`, `bench.sh`.
 - `jezero_env/`: Gymnasium env, in-process simulator wrapper, baseline controller,
   self-test, soak test.
+- `train/`: PPO training. `eval/`: evaluation, path plots, video recording.
+- `docs/media/`: plots and stills used in this README.
 - `terrain/`: DTM crop, heightmap/world generator, rebuild script.
-- `tools/`: benchmark and drive test.
+- `tools/`: benchmark, drive test, TensorBoard summary, training profiler.
 
 `run.sh` passes the host `DISPLAY`, the X11 socket, the XWayland auth cookie, and
 `/dev/dri`, so Gazebo renders on the host GPU through Mesa (verified on an AMD

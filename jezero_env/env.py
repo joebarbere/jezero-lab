@@ -151,9 +151,10 @@ class JezeroEnv(gym.Env):
 
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
-                 max_episode_seconds: float | None = None, step_size: float = 0.005):
+                 max_episode_seconds: float | None = None, step_size: float = 0.005,
+                 camera: bool = False):
         super().__init__()
-        self.sim = JezeroSim(world, step_size=step_size)
+        self.sim = JezeroSim(world, step_size=step_size, camera=camera)
         self.waypoints = self.sim.meta.get('waypoints')
         if not self.waypoints or len(self.waypoints) < 2:
             raise ValueError(f'world {world!r} has no waypoint list in its .yaml')

@@ -29,6 +29,7 @@
     <xacro:arg name="sim" default="classic"/>
     <xacro:arg name="collision" default="primitive"/>
     <xacro:arg name="wheel_mu" default="0.7"/>
+    <xacro:arg name="camera" default="false"/>
     <xacro:property name="primitive" value="${'$(arg collision)' == 'primitive'}"/>
     <xacro:property name="mesh_dir" value="file://$(find osr_gz)/meshes"/>
 
@@ -44,6 +45,9 @@
 
     <xacro:include filename="$(find osr_gz)/urdf/osr_gz.xacro"/>
     <xacro:osr_gz_plugins sim="$(arg sim)"/>
+    <xacro:if value="$(arg camera)">
+        <xacro:chase_camera/>
+    </xacro:if>
 
     <!-- A structural beam as a box from p1 to p2 (link frame, x-z plane; the
          y offsets involved are millimetres). Used for primitive collisions on

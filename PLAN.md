@@ -458,6 +458,86 @@ drives straight by.
 - Optional: camera observations, ROCm PyTorch on the RX 7600, sim-to-real prep for a
   physical OSR build.
 
+### Phase 5 results — 2026-09-29
+
+**ROCm: measured, and not worth it** (`tools/profile_train.py`). With 6 simulators,
+a PPO iteration is 9.4 s of collecting rollouts and **0.18 s of network update:
+2% of wall time**, so even an infinitely fast GPU would make training 1.02×
+faster. More torch threads made it slightly slower (6 threads: 295 steps/s vs
+321 with 2). A 2×128 MLP is too small for a GPU to matter, and gfx1102 is
+outside ROCm's official support anyway. The time goes into the simulators, run
+in lockstep: each vectorised step waits for the slowest simulator, and a reset
+(0.2–1.3 s) stalls the other five, so 6 × 82 = 490 standalone steps/s becomes
+~330. What would actually speed training up:
+
+- a coarser physics step (RTF scales ~linearly with it; 10 ms if the rover stays
+  stable),
+- more simulators, up to the core count,
+- not stalling on resets (asynchronous resets, or resetting in a background
+  process while the others step).
+
+Where the GPU *does* help is rendering, below.
+
+**Path plots** (`eval/plot_paths.py`): each held-out spawn as a panel, baseline
+and policy paths over the shaded boulder terrain, with how each ended; plus a
+whole-map overview. `eval/evaluate.py` now records each episode's path (1 Hz).
+
+![Unseen segment: baseline vs policy](docs/media/paths_unseen.png)
+
+They show *how* `ppo_rocks` fails on the unseen segment, which the success rates
+couldn't: the goal is due north, and in seeds 0, 1, 3, 4, 10 the policy instead
+heads **north-east**, drives ~10 m to nearly the same point (≈ −57, −22), and
+stops there until its budget runs out, at the foot of an east–west scarp (the dark
+band in the shading). The baseline drives straight north across it. So the policy
+isn't just failing to handle a rock: off its training ground it drifts off the
+goal bearing and stalls at a slope it avoids rather than climbs.
+
+**Chase-camera video** (`eval/record.py`, `eval/make_demo.sh`): an optional camera
+sensor on the rover (`camera:=true`, 1.6 m behind, 0.9 m up, 960×540 at 15 fps sim
+time) and Gazebo's Sensors system, rendered with ogre2 on the RX 7600 (Mesa,
+hardware GL) through the host display. Frames stream from the camera topic into
+ffmpeg (a 3-minute episode held in memory would be ~4 GB). Recordings reproduce
+the evaluation exactly: rendering doesn't perturb the physics. `make_demo.sh`
+records baseline and policy from the same spawn and stacks them side by side
+with outcome captions. Three demos, ~3.5 min to make all of them:
+
+| Demo | Baseline (left) | Policy (right) |
+|---|---|---|
+| `hard_5` | tips over on a boulder at 62 s | steers around it, reaches the goal at 186 s |
+| `unseen_0` | drives straight to the goal, 172 s | veers north-east, stalls 39.2 m out |
+| `plain_1` | tips over on the same big rock at 136 s | tips over on it too, 134 s |
+
+![hard 5 at the moment the baseline climbs the boulder](docs/media/hard5_frame.png)
+
+Videos are ~15–19 MB each, so they live in `runs/videos/` (not committed).
+
+What rendering needed, on top of the Phase 3 setup: the OSRF
+`libgz-rendering8-ogre2` package and its unversioned plugin aliases (the same
+packaging gap as the physics plugin), and `GZ_RENDERING_RESOURCE_PATH` pointed at
+ROS's vendor copy of the ogre2 shaders and media, since the OSRF package doesn't
+ship them; both copies are gz-rendering 8.2.3. Waypoint markers are now 5 cm posts:
+the rover spawns on one, and the old 15 cm post filled a third of the frame.
+
+### Where this leaves the project
+
+Built, and reproducible from this repo: the NASA-JPL OSR in Gazebo Harmonic on real
+HiRISE terrain of Jezero with Perseverance's waypoints, Mars-realistic boulder
+fields, a deterministic in-process Gymnasium env, PPO training, a paired
+evaluation against a hand-written baseline, and plots and videos of both.
+
+Not achieved: a policy that beats the baseline. On smooth terrain the baseline is
+near-optimal; in boulders the policy tips less but doesn't generalise off its
+training ground. Next steps, if picked up again:
+
+1. Start and goal pairs across the whole map, not just along the route, with a
+   spatially held-out region for evaluation, and evaluation at n ≥ 50.
+2. The scarp stall: look at what the policy sees there (the 7×7 patch at 1 m may
+   read a 10–15° scarp as a wall).
+3. A stronger baseline with simple rock avoidance from the same fine patch, so a
+   policy win means something.
+4. Training speed per the profile above: coarser step, more simulators, no reset
+   stalls.
+
 ---
 
 ## Repo layout

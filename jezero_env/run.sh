@@ -13,4 +13,7 @@ cd "$(dirname "$0")/.."
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
 export PYTHONPATH="$PWD:/osr_ws/install/osr_control/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
 unset GZ_CONFIG_PATH GZ_SIM_SYSTEM_PLUGIN_PATH GZ_SIM_PHYSICS_ENGINE_PATH
+# Rendering (the chase camera): the OSRF ogre2 package doesn't ship its shader and
+# media files; ROS's vendor copy has them for the same gz-rendering version (8.2.3).
+export GZ_RENDERING_RESOURCE_PATH=/opt/ros/jazzy/opt/gz_rendering_vendor/share/gz/gz-rendering8
 exec "$@"

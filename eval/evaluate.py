@@ -68,14 +68,19 @@ def _episode(task):
     obs, info = _env.reset(seed=seed)
     act = baseline_policy if controller == 'baseline' else _policy
     total = 0.0
+    s = _env.sim.state()
+    path = [(round(s.x, 2), round(s.y, 2))]
     while True:
         obs, r, term, trunc, step_info = _env.step(act(obs))
         total += r
+        if _env.steps % 5 == 0 or term or trunc:           # 1 Hz is plenty for a plot
+            path.append((round(step_info['x'], 2), round(step_info['y'], 2)))
         if term or trunc:
             break
     return dict(variant=variant, seed=seed, controller=controller, segment=info['segment'],
-                start_dist=info['distance'], event=step_info['event'], sim_time=step_info['sim_time'],
-                final_dist=step_info['distance'], ret=total)
+                start_dist=info['distance'], goal=list(info['goal']), event=step_info['event'],
+                sim_time=step_info['sim_time'], final_dist=step_info['distance'], ret=total,
+                path=path)
 
 
 def summarize(rows):

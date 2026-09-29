@@ -68,7 +68,8 @@ def rover_kinematics() -> RoverKinematics:
     return RoverKinematics(dims, drive_no_load_rpm=params['drive_no_load_rpm'])
 
 
-def build_rover_model(out_dir: str, collision: str = 'primitive', wheel_mu: float = 0.7) -> str:
+def build_rover_model(out_dir: str, collision: str = 'primitive', wheel_mu: float = 0.7,
+                      camera: bool = False) -> str:
     """Rover SDF model dir from the osr_gz xacro, with no simulator plugins
     (sim:=gym). Runs xacro and `gz sdf` in a ROS-sourced shell, once."""
     model_dir = os.path.join(out_dir, 'osr_rover')
@@ -76,7 +77,7 @@ def build_rover_model(out_dir: str, collision: str = 'primitive', wheel_mu: floa
     cmd = (
         'source /opt/ros/jazzy/setup.bash && source /osr_ws/install/setup.bash && '
         f'xacro {OSR_GZ}/urdf/osr.urdf.xacro sim:=gym collision:={collision} '
-        f'wheel_mu:={wheel_mu} > {model_dir}/rover.urdf && '
+        f'wheel_mu:={wheel_mu} camera:={str(camera).lower()} > {model_dir}/rover.urdf && '
         f'gz sdf -p {model_dir}/rover.urdf'
     )
     # A clean environment: the ROS setup scripts manage LD_LIBRARY_PATH themselves.
@@ -117,11 +118,13 @@ class JezeroSim:
     world: a name in osr_gz/worlds (e.g. 'jezero_delta', 'empty') or a path.
     step_size: physics step [s]; the world runs unthrottled.
     spawn: (x, y, z, yaw) override; defaults to the world's .yaml spawn pose.
+    camera: add the chase camera (topic /chase_cam) and the Sensors system, for
+        recordings. Rendering needs a display (see eval/record.py).
     """
 
     def __init__(self, world: str = 'jezero_delta', step_size: float = 0.005,
                  spawn: tuple | None = None, collision: str = 'primitive',
-                 wheel_mu: float = 0.7):
+                 wheel_mu: float = 0.7, camera: bool = False):
         self.step_size = step_size
         self.kin = rover_kinematics()
         # gz-transport is host-wide: two sims (in one process, or across a
@@ -131,7 +134,8 @@ class JezeroSim:
         self.partition = f'jezero_{os.getpid()}_{next(_instances)}'
         os.environ['GZ_PARTITION'] = self.partition
         self._tmp = tempfile.mkdtemp(prefix='jezero_env_')
-        build_rover_model(self._tmp, collision=collision, wheel_mu=wheel_mu)
+        self.camera = camera
+        build_rover_model(self._tmp, collision=collision, wheel_mu=wheel_mu, camera=camera)
 
         world_path = world if os.sep in world else os.path.join(OSR_GZ, 'worlds', world + '.sdf')
         meta_path = os.path.splitext(world_path)[0] + '.yaml'
@@ -175,6 +179,12 @@ class JezeroSim:
         if n != 1 or m != 1:
             raise RuntimeError(f'{path}: expected one <physics> block')
         self.world_name = re.search(r'<world name="([^"]+)"', sdf).group(1)
+        if self.camera:
+            sdf = sdf.replace(
+                '<plugin filename="gz-sim-physics-system"',
+                '<plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">'
+                '<render_engine>ogre2</render_engine></plugin>\n    '
+                '<plugin filename="gz-sim-physics-system"', 1)
         x, y, z, yaw = spawn
         rover = (f'<include><uri>model://osr_rover</uri><name>rover</name>'
                  f'<pose>{x} {y} {z + 0.3} 0 0 {yaw}</pose></include>\n  </world>')
