@@ -427,8 +427,30 @@ goals kept clear of rocks; `goal_mode='route'`: a random start and goal anywhere
 along the training segments' route, 10–60 m apart, either direction, so the
 policy can't memorise a few goals.
 
-**Running:** `ppo_rocks`: k = 0.05 boulders, `--rock-patch --goal-mode route`,
-segments 0–2, random heading, 10 m jitter, 3M steps.
+**`ppo_rocks`** (k = 0.05 boulders, `--rock-patch --goal-mode route`, segments
+0–2, random heading, 10 m jitter). Training goal rate rose to 60–79% by ~1M steps
+and stayed there; tipped 10–20%. At 2.7M steps it **crashed and hung**: one
+worker's reset raised "no start/goal pair found along the route". The 1.5 m
+goal-to-rock clearance left only 15% of route points eligible (0.8 m: 55%,
+1.0 m: 42%), so 200 random tries failed ~1 reset in 1,000; the dead
+`SubprocVecEnv` worker then left the main process blocked, not exited. Fixed:
+1.0 m clearance, 2,000 tries, and a fallback to a segment's own (rock-free)
+waypoints, so `_route_pair` can no longer raise. Evaluated from the 2.8M
+checkpoint (12 held-out spawns per variant, identical for both controllers):
+
+| Variant | Baseline | ppo_rocks | Paired: policy-only / baseline-only wins |
+|---|---|---|---|
+| plain | 75% (3 tipped) | 67% (3 tipped, 1 budget) | 0 / 1 |
+| hard | 42% (5 tipped, 2 budget) | 50% (3 tipped, 3 budget) | 3 / 2 |
+| unseen (segment 3) | **83%** | **25%** (7 budget, 2 tipped) | 1 / 8 |
+
+**Phase 4's done-criterion is not met.** On *hard* the policy tips less and
+wins slightly more (6/12 vs 5/12, within noise at n = 12); it doesn't win on
+*plain*, and it still doesn't generalise: route goals didn't fix what
+`ppo_v1` showed. On *unseen*, 7 policy episodes ran out of budget after moving
+~10 m, and three (seeds 0, 1, 10) stall at exactly **39.2 m** from the goal: one
+feature early in segment 3 that the policy can't get past and the baseline
+drives straight by.
 
 ## Phase 5 — Evaluation and demo
 

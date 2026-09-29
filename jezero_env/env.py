@@ -47,7 +47,9 @@ BUDGET_FACTOR = 2.5    # step budget = straight-line time at full speed x this
 SPAWN_ATTEMPTS = 5
 MIN_GOAL_DIST = 5.0    # m: jittered spawns stay at least this far from the goal
 ROUTE_GOAL_DIST = (10.0, 60.0)   # m: start-goal distance range for goal_mode='route'
-GOAL_ROCK_CLEARANCE = 1.5        # m: random goals stay this far from a rock's edge
+GOAL_ROCK_CLEARANCE = 1.0        # m: random goals stay this far from a rock's edge
+# (1.5 m left only 15% of route points eligible on k=0.05, and the sampler
+# eventually failed mid-training; 1.0 m leaves 42%.)
 
 PROGRESS_GAIN = 1.0
 GOAL_BONUS = 100.0
@@ -191,15 +193,19 @@ class JezeroEnv(gym.Env):
         return {'x': pts[-1]['x'], 'y': pts[-1]['y']}
 
     def _route_pair(self):
+        """Random start/goal along the route. Falls back to a segment's own
+        waypoints (always rock-free) rather than failing: an exception here
+        kills a SubprocVecEnv worker and hangs training."""
         lo, hi = ROUTE_GOAL_DIST
-        for _ in range(200):
+        for _ in range(2000):
             a = self._route_point(self.np_random.uniform())
             b = self._route_point(self.np_random.uniform())
             if (lo <= math.hypot(b['x'] - a['x'], b['y'] - a['y']) <= hi
                     and self.rocks.clearance(b['x'], b['y']) >= GOAL_ROCK_CLEARANCE
                     and self.rocks.clearance(a['x'], a['y']) >= ROCK_SPAWN_CLEARANCE):
                 return a, b
-        raise RuntimeError('no start/goal pair found along the route')
+        seg = int(self.np_random.choice(self.segments))
+        return self.waypoints[seg], self.waypoints[seg + 1]
 
     def _spawn_xy(self, start, goal):
         if self.spawn_jitter <= 0:
