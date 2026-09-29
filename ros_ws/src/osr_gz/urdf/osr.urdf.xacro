@@ -15,12 +15,20 @@
                           terrain in Phase 2.
   - sim:=classic|harmonic selects the ros2_control / IMU plugins (osr_gz.xacro).
   - Upstream's <surface><friction> inside <collision> is dropped: URDF can't carry
-    it, and `gz sdf -p` confirms it never reached the simulator. Wheels run on the
-    simulator's default friction, as they always have.
+    it, and `gz sdf -p` confirms it never reached the simulator. wheel_mu:= sets
+    it properly through <gazebo reference> (isotropic: upstream's mu2 of 0.3 has
+    no defined direction without fdir1, so each engine would pick its own).
+  - The rocker pivots stay fixed, as upstream has them; only the bogies
+    articulate. The OSR's differential (left rocker = -right) can't be expressed
+    here: URDF <mimic> converts to SDF fine, but gz-physics DART in Harmonic
+    rejects mimic constraints ("the chosen physics engine does not support mimic
+    constraints"), leaving the body free to pitch (it flopped to -35 deg). See
+    PLAN.md, Phase 2 results.
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rover">
     <xacro:arg name="sim" default="classic"/>
     <xacro:arg name="collision" default="primitive"/>
+    <xacro:arg name="wheel_mu" default="0.7"/>
     <xacro:property name="primitive" value="${'$(arg collision)' == 'primitive'}"/>
     <xacro:property name="mesh_dir" value="file://$(find osr_gz)/meshes"/>
 
@@ -155,13 +163,11 @@
             <primitive_collision/>
         </xacro:mesh_link>
 
-        <!-- Upstream has the rocker pivot fixed; only the bogie articulates.
-             Kept as-is for parity with Phase 0. -->
+        <!-- Fixed, as upstream: see the header comment. -->
         <joint name="rocker_bogie_joint_${prefix}_1" type="fixed">
             <parent link="body_axis_link_${prefix}"/>
             <origin rpy="0 0 0" xyz="0.016004 ${dir*0.071485} 0.001353"/>
             <child link="rocker_bogie_link_${prefix}_1"/>
-            <limit effort="10000.0" velocity="0.5" lower="-0.5" upper="0.5"/>
             <axis xyz="0 1 0"/>
         </joint>
 
@@ -230,6 +236,10 @@
 
     <!-- The six driven wheels. -->
     <xacro:macro name="wheel_tyre" params="name dir origin">
+        <gazebo reference="${name}">
+            <mu1>$(arg wheel_mu)</mu1>
+            <mu2>$(arg wheel_mu)</mu2>
+        </gazebo>
         <!-- Right side is yawed 180 degrees; dir mirrors the offset so the tyre
              centre stays inboard on both sides. -->
         <xacro:mesh_link name="${name}" mesh="wheel.stl" rpy="-1.57 0 ${origin}" material="black"

@@ -23,6 +23,7 @@ import threading
 import time
 
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -33,8 +34,8 @@ HARMONIC = os.environ.get('ROS_DISTRO') != 'humble'
 NUM = r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?'
 
 
-def rover_pose():
-    """(x, y, yaw) of model 'rover', from the simulator CLI."""
+def rover_pose_full():
+    """(x, y, z, roll, pitch, yaw) of model 'rover', from the simulator CLI."""
     out = subprocess.run(['gz', 'model', '-m', 'rover', '-p'],
                          capture_output=True, text=True, timeout=20).stdout
     if HARMONIC:
@@ -42,11 +43,37 @@ def rover_pose():
         vecs = re.findall(r'\[\s*(' + NUM + r')\s+(' + NUM + r')\s+(' + NUM + r')\s*\]', out)
         if len(vecs) < 2:
             raise RuntimeError(f'could not parse gz model output:\n{out}')
-        (x, y, _), (_, _, yaw) = vecs[0], vecs[1]
+        (x, y, z), (roll, pitch, yaw) = vecs[0], vecs[1]
     else:
         # Gazebo 11: first line "x y z roll pitch yaw"
-        x, y, _, _, _, yaw = out.split()[:6]
-    return float(x), float(y), float(yaw)
+        x, y, z, roll, pitch, yaw = out.split()[:6]
+    return tuple(float(v) for v in (x, y, z, roll, pitch, yaw))
+
+
+def rover_pose():
+    """(x, y, yaw) of model 'rover'."""
+    x, y, _, _, _, yaw = rover_pose_full()
+    return x, y, yaw
+
+def wait_for_subscriber(node, pub, timeout=30.0):
+    """DDS discovery takes ~1-2 s of wall time -- tens of sim-seconds when
+    running unthrottled -- so don't start timing until /cmd_vel has a reader."""
+    deadline = time.time() + timeout
+    while pub.get_subscription_count() == 0:
+        if time.time() > deadline:
+            sys.exit('/cmd_vel has no subscriber: is the rover node running?')
+        time.sleep(0.05)
+
+
+def gz_stats():
+    """(sim_time, real_time) in seconds from gz-sim's /stats topic."""
+    out = subprocess.run(['gz', 'topic', '-e', '-n', '1', '-t', '/stats'],
+                         capture_output=True, text=True, timeout=20).stdout
+
+    def t(key):
+        m = re.search(key + r' \{\s*(?:sec: (\d+))?\s*(?:nsec: (\d+))?', out)
+        return int(m.group(1) or 0) + int(m.group(2) or 0) / 1e9
+    return t('sim_time'), t('real_time')
 
 
 class Bench(Node):
@@ -110,8 +137,12 @@ class Bench(Node):
 def main():
     rclpy.init()
     node = Bench()
-    threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    spinner = threading.Thread(target=executor.spin, daemon=True)
+    spinner.start()
     node.wait_clock()
+    wait_for_subscriber(node, node.pub)
 
     # Forward: settle for 2 sim-s, then measure over 5 sim-s.
     fwd = Twist()
@@ -119,9 +150,16 @@ def main():
     node.cmd = fwd
     node.sim_sleep(2.0)
     (x0, y0, _), t0 = node.stamped_pose()
+    stats0 = gz_stats() if HARMONIC else None
     wall = node.sim_sleep(5.0)
-    rtf = 5.0 / wall
+    stats1 = gz_stats() if HARMONIC else None
     (x1, y1, _), t1 = node.stamped_pose()
+    # On Harmonic, RTF comes from gz-sim's own sim/real clocks; the wall-clock
+    # estimate below also counts this script's ROS latency and reads low.
+    if HARMONIC:
+        rtf = (stats1[0] - stats0[0]) / (stats1[1] - stats0[1])
+    else:
+        rtf = 5.0 / wall
     speed = math.hypot(x1 - x0, y1 - y0) / (t1 - t0)
 
     # Rotate in place: stop, let the corners steer, then 4 sim-s of angular.y.
@@ -143,6 +181,8 @@ def main():
 
     print(f'rtf={rtf:.2f} speed={speed:.3f}m/s(cmd 0.3) '
           f'rotate: dyaw={dyaw:+.1f}deg/4s drift={drift * 100:.1f}cm')
+    executor.shutdown()
+    spinner.join(timeout=5)
     node.destroy_node()
     rclpy.shutdown()
 

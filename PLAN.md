@@ -143,6 +143,74 @@ Carried into Phase 2 (upstream model issues, left as-is for parity):
 - **Done when:** the rover spawns on the terrain and drives without sinking through
   it or bouncing off.
 
+### Phase 2 results — 2026-09-29
+
+```
+ros2 launch osr_gz sim.launch.py world:=jezero_delta [realtime:=false]
+```
+
+**Terrain.** 256 m × 256 m of the Jezero delta front, 65.8 m of relief, from the
+USGS Mars 2020 TRN HiRISE DTM mosaic (1 m/px, Fergason et al. 2020,
+doi:10.5066/P9REJ9JN). `terrain/fetch_dtm.sh` reads just the window over HTTP
+(the mosaic is uncompressed and row-striped, so a 257-row crop is ~22 MB of the
+1.8 GB file, ~20 s). `terrain/build_jezero_delta.sh` rebuilds everything.
+
+- **Where:** the 256 m window along Perseverance's traverse with the most climb
+  while staying on the delta: sols 437–708, 41 route points. (The steepest window
+  overall, sols 1244–1254 with 64 m of route climb, is the crater rim, left for later.)
+- **Waypoints:** NASA's M20 waypoint file (MMGIS), lat/lon converted to the DTM's
+  projection (x = R·lon, y = R·lat, R = 3,396,190 m). **NASA's recorded elevation
+  matches the DTM within 0.1–0.4 m at every waypoint**, which validates the
+  conversion. Five waypoints, sols 437 → 441 → 448 → 455 → 461: ~300 m of real
+  route, climbing 16 m (z 3.3 → 19.3).
+- **Slopes:** median 9.3°, 21% of cells > 15°, 7.5% > 20°, 0.9% > 30°, max 42.8°.
+- **Loading:** 16-bit PNG heightmap with an explicit `<size>` (not a georeferenced
+  DEM: Harmonic's DEM loader assumes Earth for geographic rasters, and the PNG
+  path has fewer unknowns). Own regolith-coloured texture: Gazebo's stock terrain
+  textures aren't installed with the Harmonic packages. Mars gravity 3.721 m/s².
+  Waypoints are visual-only blue posts; spawn pose and waypoints are also in
+  `worlds/jezero_delta.yaml` for Phase 3.
+
+**Checks:**
+
+| Check | Result |
+|---|---|
+| Heightmap orientation/scale | settled at z = 3.24 m at the sol 437 spawn; DTM says 3.29 m. Row-flipped would be 35.3, column-flipped 5.9 |
+| Settling | pose identical over repeated reads after spawn on a ~7° slope: no sinking, bouncing, or sliding |
+| Drive to sol 441 | straight at 0.3 m/s for 121 sim-s: 33.6 m, +3.6 m climb, ending 1.7 m from Perseverance's sol 441 position (33.2 m away). 0.28 m/s average; pitch up to 11° |
+| RTF, unthrottled (gz `/stats`) | **Jezero 21–22×**, flat 15.5–16× (heightmap contact is cheaper for DART than the ground plane) |
+
+**Model fixes (both simulators):**
+
+- **Wheel radius:** the sim now passes `rover_dimensions.wheel_radius: 0.082` to
+  the rover node (the simulated wheel; upstream's `rover_bringup.md` shows 0.082
+  as the override). Forward speed went from 0.327 to **0.300 m/s** for 0.3
+  commanded, on Harmonic and Classic.
+- **Friction:** `wheel_mu:=` (default 0.7, upstream's intended μ) applied via
+  `<gazebo reference>`, which does survive URDF→SDF (6 `<mu>` in the SDF, vs 0
+  from upstream's `<surface>` block). Isotropic: upstream's μ2 = 0.3 has no
+  defined direction without `fdir1`. No RTF cost (μ 0.7 vs 1.0: identical).
+- Rotate-in-place is now −103° / 4 s real time on Harmonic, −94° on Classic (it
+  goes through the wheel-radius math too).
+
+**Tried and rejected: the rocker differential.** URDF `<mimic>` (left rocker =
+−right) converts to SDF correctly, but DART in Harmonic refuses it at runtime:
+"the chosen physics engine does not support mimic constraints". Without it the
+body is free to pitch and flopped to −35°. Rockers stay fixed as upstream has them;
+the bogies articulate, and the drive above shows that's enough on 1 m terrain.
+Real fix: a small gz-sim system plugin applying the differential as a torque
+coupling (τ ∝ −(θ_L + θ_R)). Bullet-Featherstone supports mimic but failed Phase 1's
+drive test.
+
+**Deferred to Phase 4 (boulder fields):** primitive collisions on rockers, bogies,
+and brackets, so the rover can high-centre on rocks. A 1 m DTM has no rocks, so
+nothing can touch them here.
+
+**Tooling:** `tools/drive_test.py` (drive straight, log pose/tilt);
+`tools/bench.py` now takes RTF from gz `/stats` on Harmonic, waits for `/cmd_vel`
+to have a reader before timing (DDS discovery is ~1–2 s of wall time = tens of
+sim-seconds unthrottled), and shuts its executor down cleanly.
+
 ## Phase 3 — Gym environment
 
 `JezeroEnv(gymnasium.Env)`:

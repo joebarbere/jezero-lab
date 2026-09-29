@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<!-- Gazebo Harmonic: an empty world stepping as fast as the CPU allows
-     (real_time_factor 0 = unthrottled). Systems listed explicitly, since a
-     world that names any system doesn't get the defaults. -->
+<!-- Gazebo Harmonic empty world. sim.launch.py sets the physics step and
+     real-time throttling (realtime:=, step:=) in a temp copy. Systems are
+     listed explicitly, since a world that names any system gets no defaults. -->
 <sdf version="1.9">
   <world name="empty">
     <physics name="1ms" type="ignored">

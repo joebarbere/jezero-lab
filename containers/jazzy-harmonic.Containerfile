@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-ros2controlcli \
         ros-jazzy-teleop-twist-keyboard \
         ros-jazzy-xacro \
+        gdal-bin \
+        python3-gdal \
         mesa-utils \
     && rm -rf /var/lib/apt/lists/*
 

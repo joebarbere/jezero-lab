@@ -13,3 +13,10 @@ ros_ws/src/osr_gz/urdf/osr_gz.xacro, ros_ws/src/osr_gz/config/controllers.yaml,
 ros_ws/src/osr_gz/launch/sim.launch.py.
 Copied unchanged: ros_ws/src/osr_gz/scripts/gazebo_command_adapter.py.
 Meshes are used in place from the osr-rover-code submodule.
+
+Terrain data (ros_ws/src/osr_gz/models/jezero_delta, worlds/jezero_delta.*):
+  Derived from the Mars 2020 Terrain Relative Navigation HiRISE DTM Mosaic,
+  Fergason, R.L., Galuszka, D.M., Hare, T.M., Mayer, D.P., and Redding, B.L.,
+  2020, U.S. Geological Survey, doi:10.5066/P9REJ9JN.
+  Waypoints from NASA/JPL-Caltech's Mars 2020 (Perseverance) traverse data,
+  https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json
