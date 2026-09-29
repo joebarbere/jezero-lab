@@ -527,16 +527,63 @@ evaluation against a hand-written baseline, and plots and videos of both.
 
 Not achieved: a policy that beats the baseline. On smooth terrain the baseline is
 near-optimal; in boulders the policy tips less but doesn't generalise off its
-training ground. Next steps, if picked up again:
+training ground.
+
+### What the 2020 challenge entrants tried (reviewed 2026-09-29)
+
+All 104 forks of the challenge repo were checked; 17 branches have real changes.
+The 2020 setup was different: the policy saw only a 160×120 camera image (no goal
+vector) and chose among 3 steering actions at fixed throttle. Upstream also shipped
+with bugs most forks fixed: the checkpoint x had the wrong sign (the goal was
+unreachable; the 2020 `docker-cuda` branch fixed it too), and the collision flag
+was misnamed so bumper termination never fired.
+
+**With evidence** (rcampbell95, the only fork with results: TensorBoard logs,
+~120–150k steps per run):
+
+- **PPO was the only algorithm to reach the goal**: 14 of 630 episodes (2%). DQN and
+  Rainbow on the same reward never got closer than 26–35 m of 44. Supports PPO with
+  continuous actions.
+- **A reward paid per step of survival teaches survival**: episode return rose while
+  episodes just got longer, never nearer. jezero_env's progress + goal bonus + time
+  cost avoids this.
+- **Progress ÷ distance driven diverges** when the rover barely moves (Rainbow's
+  return fell to ~−22k). Any efficiency term must be bounded.
+
+**Untested there, and aimed at our failures:**
+
+- **Stuck termination with a negative reward** (four forks ended episodes on no
+  progress). Targets the scarp stall. Must be negative: ending at 0 would be a free
+  escape from the time cost.
+- **Reward for heading toward the goal**, e.g. the cosine between velocity and goal
+  bearing (two forks tried variants: a rolling "fraction of steps closer", a penalty
+  on steering changes). Targets the drift off the goal bearing on unseen terrain.
+- **Early tip warning**: two forks terminated on high IMU acceleration. Here, a
+  graded penalty on roll/pitch rate before the 35° limit.
+- **Obstacle shaping**: upstream rewarded LiDAR clearance; here, max slope or step
+  height from the 9×9 fine patch.
+
+Nobody randomised starts or goals, or tested generalisation at all: every agent saw
+one fixed route. Nothing there addresses our biggest failure.
+
+### Next steps, if picked up again
 
 1. Start and goal pairs across the whole map, not just along the route, with a
    spatially held-out region for evaluation, and evaluation at n ≥ 50.
-2. The scarp stall: look at what the policy sees there (the 7×7 patch at 1 m may
-   read a 10–15° scarp as a wall).
-3. A stronger baseline with simple rock avoidance from the same fine patch, so a
+2. Reward changes from the review above, **one at a time, each measured**: stuck
+   termination with a penalty, a bounded heading-alignment term, a tilt-rate
+   penalty.
+3. The scarp stall: look at what the policy sees there (the 7×7 patch at 1 m may
+   read a 10–15° scarp as a wall). A small CNN over the terrain patches (SB3
+   feature extractor) fits their grid structure better than the flat MLP;
+   network size itself isn't the constraint (the update is 2% of training time).
+4. A stronger baseline with simple rock avoidance from the same fine patch, so a
    policy win means something.
-4. Training speed per the profile above: coarser step, more simulators, no reset
-   stalls.
+5. Training speed per the profile above: coarser step, more simulators, no reset
+   stalls. If a framework change is wanted for this, Sample Factory (asynchronous
+   rollouts) is the one that addresses the lockstep bottleneck; SB3 already covers
+   the model changes above. Swap plan: a framework-neutral `load_policy()` for
+   eval/record, then reproduce `ppo_v1`'s plain-delta numbers before moving on.
 
 ---
 
