@@ -1,0 +1,15 @@
+# build outputs
+build/
+install/
+log/
+
+# training + eval outputs
+runs/
+*.mp4
+
+# terrain downloads (large; fetched by scripts in terrain/)
+terrain/data/
+
+__pycache__/
+*.pyc
+.venv/

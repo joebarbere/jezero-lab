@@ -1,0 +1,3 @@
+[submodule "ros_ws/src/osr-rover-code"]
+	path = ros_ws/src/osr-rover-code
+	url = https://github.com/nasa-jpl/osr-rover-code
