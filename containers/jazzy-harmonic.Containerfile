@@ -43,6 +43,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg lsb-
     && ln -s libgz-physics7-dartsim-plugin.so.7 libgz-physics7-dartsim-plugin.so \
     && ln -s libgz-physics7-dartsim-plugin.so libgz-physics-dartsim-plugin.so
 
+# Training: CPU-only PyTorch (the CUDA wheels are ~5 GB and there's no NVIDIA GPU
+# here), Stable-Baselines3, TensorBoard.
+RUN pip3 install --break-system-packages --no-cache-dir \
+        torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip3 install --break-system-packages --no-cache-dir \
+        "stable-baselines3>=2.6,<3" tensorboard
+
 # Upstream osr_gazebo keeps its COLCON_IGNORE here: it needs Gazebo Classic,
 # which Jazzy doesn't have. osr_gz replaces it.
 WORKDIR /osr_ws

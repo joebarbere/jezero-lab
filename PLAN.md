@@ -359,6 +359,77 @@ random-agent episodes (random segment and heading, 20 sim-s cap), 100,000 steps 
 - Worth trying: a little damping on the bogie joints. Real pivots have friction,
   and it would shorten the 3 s post-spawn settle that dominates reset time.
 
+### Phase 4 results — in progress (2026-09-29)
+
+**Tooling.** CPU-only PyTorch 2.14, Stable-Baselines3 2.9, TensorBoard 2.21 in the
+image (5.9 GB). `train/train.py`: PPO, `SubprocVecEnv` (spawn start method, one
+simulator + `GZ_PARTITION` per process), `VecNormalize` (saved with every
+checkpoint), 2×128 MLP, torch on 2 threads, TensorBoard with outcome rates
+(goal / tipped / budget / out of bounds). ~340 env steps/s with 6 simulators.
+Training is deterministic end to end: a second run with the same seed matched the
+first to the last digit at every logged step. `eval/evaluate.py` runs the policy
+and the baseline on identical spawns (evaluation seeds from 1,000,000, far from
+training's), in three variants: *plain* (segments 0–2, from the waypoint, facing
+the goal), *hard* (random heading, 10 m jitter, held-out seeds), *unseen* (segment
+3, never trained on). `tools/tb_summary.py` prints a run's curves.
+
+**The plain delta can't show RL doing anything useful.** The baseline scores 100% on
+*plain*, *hard* and *unseen*, at 0.30 m/s, i.e. flat out in a straight line. On a
+smooth 1 m DTM, "point at the goal and drive" is near optimal. `ppo_v1` (1.0M
+steps, segments 0–2, random heading, 10 m jitter; stopped early once it plateaued
+at a 93–100% training goal rate):
+
+| Variant | Baseline | ppo_v1 |
+|---|---|---|
+| plain | 100%, 0.305 m/s | 100%, 0.267 m/s |
+| hard | 100%, 0.302 m/s | 92%, 0.241 m/s |
+| unseen (segment 3) | 100%, 0.297 m/s | **42%**, 0.137 m/s |
+
+It learned to drive, but slower than the baseline, and it **memorised its three
+training segments**: 42% on the unseen one.
+
+**Steepness doesn't help either.** `jezero_rim` (`terrain/build_jezero_rim.sh`):
+Perseverance's crater-rim climb, sols 1244–1252, 89 m relief, median slope 15.5°,
+56% of cells > 15°, max 30°. Built and kept, but in this sim a straight climb
+isn't hard: wheel joints have no effort limit (and a realistic one wouldn't
+matter: the drive config's 223 rpm matches goBILDA's 26.9:1 motor, stall ~3.7 N·m,
+and a 20° climb at Mars gravity needs ~0.7 N·m per wheel for the ~42 kg model),
+and μ = 0.7 only slips past ~35°.
+
+**Rocks are what a small rover can't just drive through.** `terrain/add_rocks.py`
+scatters rocks along the route with the **Golombek–Rapp** Mars rock-abundance model
+(fractional area covered by rocks ≥ D: k·e^(−q(k)·D), q = 1.79 + 0.152/k),
+diameters 0.2–1.5 m, spheres centred at ground level (D/2 tall), within 20 m of the
+route, 2 m clear of waypoints. Measured coverage matches the model (k = 0.05: 2.0%
+vs 1.9% predicted; k = 0.03: 0.7 vs 0.8; k = 0.08: 3.7 vs 3.8). k = 0.05 gives
+2,544 rocks, 837 of them ≥ 0.3 m.
+
+- **Rocks as models are unusable:** 2,544 separate models ran at **0.40×** real
+  time (vs 12.6× without); one static model with 2,544 sphere collisions, 1.6×.
+- **Rocks baked into the terrain cost nothing:** the heightmap is upsampled to
+  2049×2049 (12.5 cm) and each rock's dome √(r² − d²) added. Heightfield
+  collision only tests cells near the rover: **12.8×** with 2,544 rocks, 12.1×
+  with 4,346. Trade-off: a rock is a dome sampled at 12.5 cm, not a sphere with
+  vertical sides. Worlds: `jezero_delta_rocks_k03/k05/k08`.
+- **They behave like rocks.** Driving straight at one: a 0.25 m rock (0.11 m tall)
+  is driven over; 0.40 m (0.17 m) climbed at 24° pitch; 0.70 m (0.37 m) blocks the
+  rover and deflects it 4.75 m sideways; 1.35 m (0.66 m) flips it over.
+- **Suspension collisions:** the rocker, bogie and steering-bracket beams are now
+  4 cm boxes between their joint origins (so the rover can high-centre).
+  Flat-ground behaviour is unchanged to four decimals (they don't touch the ground).
+- **The baseline fails in the boulder field** (k = 0.05, 12 episodes per variant):
+  *plain* 75% (3 tip-overs), *hard* **42%** (5 tip-overs, 2 stuck), *unseen* 83%.
+  Now there is something to learn.
+
+**Env additions:** `spawn_jitter`; `rock_patch` (a 9×9 patch at 0.4 m of the
+12.5 cm terrain, so the policy sees rocks; 142 floats in all); spawns and random
+goals kept clear of rocks; `goal_mode='route'`: a random start and goal anywhere
+along the training segments' route, 10–60 m apart, either direction, so the
+policy can't memorise a few goals.
+
+**Running:** `ppo_rocks`: k = 0.05 boulders, `--rock-patch --goal-mode route`,
+segments 0–2, random heading, 10 m jitter, 3M steps.
+
 ## Phase 5 — Evaluation and demo
 
 - Eval script: fixed seeds, recorded videos, success rate and path-efficiency plots.

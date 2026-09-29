@@ -9,10 +9,10 @@
 
   - collision:=mesh       upstream behaviour: every link collides with its full STL
                           (~1.4M triangles total; RTF 0.25 in jezero-lab Phase 0).
-    collision:=primitive  wheels are cylinders, the body is a box. Structural links
-                          that can't reach flat ground (arms, turnbuckles, rockers,
-                          steering brackets) get no collision. Revisit for rough
-                          terrain in Phase 2.
+    collision:=primitive  wheels are cylinders, the body is a box, and the rocker,
+                          bogie, and steering-bracket beams are 4 cm boxes between
+                          their joints (so the rover can high-centre on rocks).
+                          Arms and turnbuckles, inside the body's footprint, get none.
   - sim:=classic|harmonic selects the ros2_control / IMU plugins (osr_gz.xacro).
   - Upstream's <surface><friction> inside <collision> is dropped: URDF can't carry
     it, and `gz sdf -p` confirms it never reached the simulator. wheel_mu:= sets
@@ -44,6 +44,19 @@
 
     <xacro:include filename="$(find osr_gz)/urdf/osr_gz.xacro"/>
     <xacro:osr_gz_plugins sim="$(arg sim)"/>
+
+    <!-- A structural beam as a box from p1 to p2 (link frame, x-z plane; the
+         y offsets involved are millimetres). Used for primitive collisions on
+         the rockers, bogies, and steering brackets, so the rover can high-centre
+         on rocks. Endpoints are the joint origins the links connect. -->
+    <xacro:property name="beam_w" value="0.04"/>
+    <xacro:macro name="beam" params="x1 z1 x2 z2">
+        <collision>
+            <origin xyz="${(x1 + x2) / 2} 0 ${(z1 + z2) / 2}"
+                    rpy="0 ${atan2(-(z2 - z1), x2 - x1)} 0"/>
+            <geometry><box size="${sqrt((x2 - x1)**2 + (z2 - z1)**2)} ${beam_w} ${beam_w}"/></geometry>
+        </collision>
+    </xacro:macro>
 
     <!-- Visual always uses the mesh. Collision uses the mesh only in mesh mode;
          the caller supplies a primitive via the block, or nothing. -->
@@ -160,7 +173,10 @@
         <xacro:mesh_link name="rocker_bogie_link_${prefix}_1" mesh="rockerbogie_middle_1.stl" rpy="0 0 0" material="silver"
                          mass="7" ixx="0.24701126860819052" iyy="3.544526366681435" izz="3.335915098740816">
             <origin rpy="0 0 0" xyz="0 0 0.0"/>
-            <primitive_collision/>
+            <primitive_collision>
+                <xacro:beam x1="0" z1="0" x2="0.099618" z2="-0.091275"/>
+                <xacro:beam x1="0" z1="0" x2="-0.311763" z2="-0.030379"/>
+            </primitive_collision>
         </xacro:mesh_link>
 
         <!-- Fixed, as upstream: see the header comment. -->
@@ -174,7 +190,10 @@
         <xacro:mesh_link name="rocker_bogie_link_${prefix}_2" mesh="rockerbogie_front_1.stl" rpy="0 0 0" material="silver"
                          mass="3" ixx="0.51733003028693055" iyy="1.1690895987181758" izz="0.6934262363396754">
             <origin rpy="0 0 0" xyz="0 0 0.0"/>
-            <primitive_collision/>
+            <primitive_collision>
+                <xacro:beam x1="0" z1="0" x2="0.170113" z2="0.076721"/>
+                <xacro:beam x1="0" z1="0" x2="-0.101456" z2="-0.100276"/>
+            </primitive_collision>
         </xacro:mesh_link>
 
         <joint name="rocker_bogie_joint_${prefix}_2" type="revolute">
@@ -193,7 +212,9 @@
         <xacro:mesh_link name="front_wheel_link_${prefix}" mesh="wheel_link_left_2.stl" rpy="0 0 ${dir*-1.57}" material="silver"
                          mass="0.8" ixx="0.002865290876023045" iyy="0.004329299643338258" izz="0.0018192303726865125">
             <origin rpy="0 0 ${dir*-1.57}" xyz="0 0 0.0"/>
-            <primitive_collision/>
+            <primitive_collision>
+                <xacro:beam x1="0" z1="0" x2="0.006231" z2="${-0.169991 + wheel_r}"/>
+            </primitive_collision>
         </xacro:mesh_link>
 
         <joint name="front_wheel_joint_${prefix}" type="revolute">
@@ -220,7 +241,9 @@
         <xacro:mesh_link name="rear_wheel_link_${prefix}" mesh="wheel_link_left_2.stl" rpy="0 0 ${-dir*1.57}" material="silver"
                          mass="0.8" ixx="0.002865290876023045" iyy="0.004329299643338258" izz="0.0018192303726865125">
             <origin rpy="0 0 ${-dir*1.57}" xyz="0 0 0.0"/>
-            <primitive_collision/>
+            <primitive_collision>
+                <xacro:beam x1="0" z1="0" x2="-0.000203" z2="${-0.160678 + wheel_r}"/>
+            </primitive_collision>
         </xacro:mesh_link>
 
         <joint name="rear_wheel_joint_${prefix}" type="revolute">
