@@ -1,0 +1,15 @@
+jezero-lab
+Copyright 2026 Joe Barbere
+
+This project includes software derived from the NASA-JPL Open Source Rover
+(https://github.com/nasa-jpl/osr-rover-code), licensed under the Apache License,
+Version 2.0:
+
+  Copyright 2018 California Institute of Technology.
+  Government Sponsorship Acknowledged.
+
+Derived files (modified): ros_ws/src/osr_gz/urdf/osr.urdf.xacro,
+ros_ws/src/osr_gz/urdf/osr_gz.xacro, ros_ws/src/osr_gz/config/controllers.yaml,
+ros_ws/src/osr_gz/launch/sim.launch.py.
+Copied unchanged: ros_ws/src/osr_gz/scripts/gazebo_command_adapter.py.
+Meshes are used in place from the osr-rover-code submodule.

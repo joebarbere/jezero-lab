@@ -1,0 +1,37 @@
+# Same controllers as upstream osr_gazebo/config/controller_velocity.yaml.
+# Joint order in wheel_controller must match gazebo_command_adapter.py.
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    wheel_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+    servo_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+wheel_controller:
+  ros__parameters:
+    joints:
+      - middle_wheel_joint_right
+      - middle_wheel_joint_left
+      - front_wheel_joint_right
+      - front_wheel_joint_left
+      - rear_wheel_joint_right
+      - rear_wheel_joint_left
+
+servo_controller:
+  ros__parameters:
+    joints:
+      - front_wheel_joint_R
+      - front_wheel_joint_L
+      - rear_wheel_joint_R
+      - rear_wheel_joint_L
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity

@@ -1,0 +1,96 @@
+<?xml version="1.0"?>
+<!--
+  Simulator-specific plugins: ros2_control hardware + IMU.
+  sim="classic"  : gazebo_ros2_control + gazebo_ros IMU plugin (as upstream osr_gazebo)
+  sim="harmonic" : gz_ros2_control + gz-sim IMU system (IMU bridged by the launch file)
+
+  Command/state interfaces are upstream's, minus the per-joint velocity command
+  interface on the steering joints, which no controller uses.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="wheel_joint" params="name">
+    <joint name="${name}">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="steer_joint" params="name">
+    <joint name="${name}">
+      <command_interface name="position">
+        <param name="min">-5</param>
+        <param name="max">5</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="osr_gz_plugins" params="sim">
+    <xacro:property name="controllers" value="$(find osr_gz)/config/controllers.yaml"/>
+
+    <ros2_control name="GazeboSystem" type="system">
+      <hardware>
+        <xacro:if value="${sim == 'harmonic'}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${sim == 'classic'}">
+          <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </xacro:if>
+      </hardware>
+      <xacro:wheel_joint name="middle_wheel_joint_left"/>
+      <xacro:wheel_joint name="middle_wheel_joint_right"/>
+      <xacro:wheel_joint name="rear_wheel_joint_left"/>
+      <xacro:wheel_joint name="rear_wheel_joint_right"/>
+      <xacro:wheel_joint name="front_wheel_joint_left"/>
+      <xacro:wheel_joint name="front_wheel_joint_right"/>
+      <xacro:steer_joint name="front_wheel_joint_R"/>
+      <xacro:steer_joint name="front_wheel_joint_L"/>
+      <xacro:steer_joint name="rear_wheel_joint_R"/>
+      <xacro:steer_joint name="rear_wheel_joint_L"/>
+    </ros2_control>
+
+    <xacro:if value="${sim == 'harmonic'}">
+      <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>${controllers}</parameters>
+        </plugin>
+        <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+      </gazebo>
+      <gazebo reference="imu_link">
+        <sensor name="imu_sensor" type="imu">
+          <always_on>true</always_on>
+          <update_rate>100</update_rate>
+          <topic>imu</topic>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="${sim == 'classic'}">
+      <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+          <parameters>${controllers}</parameters>
+        </plugin>
+      </gazebo>
+      <gazebo reference="imu_link">
+        <sensor name="imu_sensor" type="imu">
+          <always_on>true</always_on>
+          <update_rate>100</update_rate>
+          <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+            <ros>
+              <remapping>~/out:=imu</remapping>
+            </ros>
+            <frame_name>imu_link</frame_name>
+            <initial_orientation_as_reference>false</initial_orientation_as_reference>
+          </plugin>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+  </xacro:macro>
+</robot>

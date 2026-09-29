@@ -64,6 +64,76 @@ yaw sign negative for positive `angular.y`.
   (`angular.y`).
 - Optional: open a pull request upstream, since it's their open follow-up.
 
+### Phase 1 results — 2026-09-29
+
+New package `ros_ws/src/osr_gz` (derived from upstream `osr_gazebo`, Apache-2.0),
+built in both `jezero-lab:humble-classic` and `jezero-lab:jazzy-harmonic`:
+
+```
+ros2 launch osr_gz sim.launch.py [sim:=classic|harmonic] [collision:=primitive|mesh]
+                                 [gui:=true|false] [realtime:=true|false [step:=0.005]]
+```
+
+Same link/joint names and inertials as upstream, the same `osr_control` rover
+node + `kinematics.py`, and upstream's command adapter unchanged. Measured with
+`containers/bench.sh` (`tools/bench.py`): forward speed and rotate-in-place
+against sim time, heading from the IMU.
+
+| Config | RTF | Forward (0.3 cmd) | Rotate, 4 sim-s |
+|---|---|---|---|
+| Phase 0: upstream, Classic, mesh | 0.24 | 0.325 | −84° |
+| Classic, `osr_gz` mesh (parity check) | 0.26 | 0.322 | −83° |
+| Classic, primitive, real time | 0.98 (capped) | 0.326 | −103° |
+| **Harmonic, primitive, real time** | 1.00 (capped) | 0.328 | −116° |
+| Harmonic, mesh, real time | 0.99 (capped) | 0.327 | −115° |
+| Harmonic, primitive, unthrottled, 1 ms | 3.1 | 0.324 | −115° |
+| Harmonic, primitive, unthrottled, 2 / 4 / 8 ms | 6.2 / 11.7 / 22.4 | 0.327–0.329 | −119° / −124° / −130° |
+| **Harmonic, primitive, unthrottled, 5 ms (default)** | **~16** (gz `/stats`, idle/driving/rotating 16.3/15.6/16.6) | 0.327 | −124° |
+
+Findings, in order of how much they matter:
+
+- **Target met on Harmonic: ~16× real time** at the default 5 ms step, steady
+  across idle, driving, and rotating. RTF scales ~linearly with step size.
+  5 ms is the default because it divides the 100 Hz controller period.
+  Rotate-in-place gets ~7% faster at 5 ms than at 1 ms (servo response to a
+  coarser step); forward speed doesn't change.
+- **Mesh collision is Classic's problem, not Harmonic's.** DART keeps up with
+  real time even with the full STL collisions. Primitives are the default
+  anyway; they're what makes unthrottled stepping fast, and the terrain in
+  Phase 2 will cost more contacts.
+- **Classic's unthrottled RTF is state-dependent and unreliable**: 1.5–11× at
+  1 ms depending on what the rover is doing (gz stats: 10.9 idle vs ~1.7 after
+  driving). Two early bench readings (10.4, 40.9) came from that variance. Not
+  pursued: Classic is only the Phase 0 reference now.
+- **Rotate-in-place differs by simulator** (−84° upstream mesh, −103° Classic
+  primitive, −116° Harmonic). Forward speed matches everywhere. Direction and
+  sign match Phase 0. Contact geometry (mesh treads vs cylinders) and engine
+  (ODE vs DART) both move it. Acceptable for RL; don't treat rotate rate as
+  ground truth for the physical rover.
+- **Bullet-Featherstone was tried and rejected**: 3.8× at 1 ms (vs DART 3.1) but
+  the rover barely drives (0.23 m/s, −7° rotate). Joint control behaves
+  differently there.
+- **Harmonic bridges `/clock` on every physics step.** A Python node on sim time
+  burned a full core just receiving it unthrottled. The rover node and command
+  adapter never read the clock, so they run on wall time (as upstream runs them).
+- **Humble `gazebo_ros2_control` can't take XML comments in `robot_description`**
+  (it passes the URDF as an rcl command-line override). The launch file strips
+  them.
+
+Carried into Phase 2 (upstream model issues, left as-is for parity):
+
+- **Wheel radius mismatch.** Mesh tyre radius is 0.082 m; `osr_params.yaml` says
+  0.075. Every sim runs ~9% fast (0.3 → ~0.327). Decide which is right for the
+  physical v4 rover before training on speed.
+- **Upstream friction was never applied.** `<surface><friction>` inside URDF
+  `<collision>` is dropped in URDF→SDF conversion (`gz sdf -p`: 6 `<mu>` in, 0
+  out); wheels have always run on the simulator default. Set it deliberately with
+  `<gazebo reference>` for Mars regolith.
+- **The rocker pivot is fixed.** `rocker_bogie_joint_*_1` is `type="fixed"`; only
+  the bogie articulates. Irrelevant on flat ground, wrong on Jezero terrain.
+- **Primitive mode has no collision on rockers, bogies, or brackets.** Fine on
+  flat ground; on rocks they need capsules/boxes so the rover can high-centre.
+
 ## Phase 2 — Jezero world
 
 - Download a HiRISE DTM of the Jezero delta; crop to a drivable patch of a few

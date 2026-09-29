@@ -1,0 +1,281 @@
+<?xml version="1.0" ?>
+<!--
+  NASA-JPL Open Source Rover for Gazebo Classic and Gazebo Harmonic.
+
+  Derived from osr-rover-code/ROS/osr_gazebo/urdf/osr.urdf.xacro (Apache-2.0,
+  Copyright 2018 California Institute of Technology). Link and joint names,
+  origins, limits, and inertials are unchanged, so osr_control and
+  gazebo_command_adapter work as-is. Changes:
+
+  - collision:=mesh       upstream behaviour: every link collides with its full STL
+                          (~1.4M triangles total; RTF 0.25 in jezero-lab Phase 0).
+    collision:=primitive  wheels are cylinders, the body is a box. Structural links
+                          that can't reach flat ground (arms, turnbuckles, rockers,
+                          steering brackets) get no collision. Revisit for rough
+                          terrain in Phase 2.
+  - sim:=classic|harmonic selects the ros2_control / IMU plugins (osr_gz.xacro).
+  - Upstream's <surface><friction> inside <collision> is dropped: URDF can't carry
+    it, and `gz sdf -p` confirms it never reached the simulator. Wheels run on the
+    simulator's default friction, as they always have.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rover">
+    <xacro:arg name="sim" default="classic"/>
+    <xacro:arg name="collision" default="primitive"/>
+    <xacro:property name="primitive" value="${'$(arg collision)' == 'primitive'}"/>
+    <xacro:property name="mesh_dir" value="file://$(find osr_gz)/meshes"/>
+
+    <!-- Wheel tyre from wheel.stl: radius 0.082, width 0.101, centred 7.5 mm
+         inboard of the link origin (after the -1.57 roll the mesh applies). -->
+    <xacro:property name="wheel_r" value="0.082"/>
+    <xacro:property name="wheel_w" value="0.101"/>
+    <xacro:property name="wheel_y" value="-0.0075"/>
+
+    <material name="black"><color rgba="0.1 0.1 0.1 1.0"/></material>
+    <material name="silver"><color rgba="0.75 0.75 0.75 1"/></material>
+    <material name="brown"><color rgba="0.5451 0.2706 0.0745 1"/></material>
+
+    <xacro:include filename="$(find osr_gz)/urdf/osr_gz.xacro"/>
+    <xacro:osr_gz_plugins sim="$(arg sim)"/>
+
+    <!-- Visual always uses the mesh. Collision uses the mesh only in mesh mode;
+         the caller supplies a primitive via the block, or nothing. -->
+    <xacro:macro name="mesh_link" params="name mesh rpy material mass ixx iyy izz *inertial_origin **primitive_collision">
+        <link name="${name}">
+            <xacro:if value="${primitive}">
+                <xacro:insert_block name="primitive_collision"/>
+            </xacro:if>
+            <xacro:unless value="${primitive}">
+                <collision>
+                    <origin rpy="${rpy}" xyz="0 0 0"/>
+                    <geometry><mesh filename="${mesh_dir}/${mesh}"/></geometry>
+                </collision>
+            </xacro:unless>
+            <visual>
+                <origin rpy="${rpy}" xyz="0 0 0"/>
+                <geometry><mesh filename="${mesh_dir}/${mesh}"/></geometry>
+                <material name="${material}"/>
+            </visual>
+            <inertial>
+                <xacro:insert_block name="inertial_origin"/>
+                <mass value="${mass}"/>
+                <inertia ixx="${ixx}" ixy="0" ixz="0" iyy="${iyy}" iyz="0" izz="${izz}"/>
+            </inertial>
+        </link>
+    </xacro:macro>
+
+    <link name="base_footprint"/>
+
+    <!-- body.stl bounding box: 0.356 x 0.254 x 0.141, centred at z = +0.0115 -->
+    <xacro:mesh_link name="base_link" mesh="body.stl" rpy="0 0 0" material="brown"
+                     mass="10" ixx="0.28541666666666665" iyy="0.8666666666666666" izz="1.0854166666666665">
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <primitive_collision>
+            <collision>
+                <origin rpy="0 0 0" xyz="0 0 0.0115"/>
+                <geometry><box size="0.356 0.254 0.141"/></geometry>
+            </collision>
+        </primitive_collision>
+    </xacro:mesh_link>
+
+    <joint name="base_joint" type="fixed">
+        <parent link="base_footprint"/>
+        <origin rpy="0 0 0" xyz="0 0 0.273745"/>
+        <child link="base_link"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+
+    <xacro:mesh_link name="box_rotate" mesh="box_link.stl" rpy="0 0 -3.14" material="silver"
+                     mass="0.2" ixx="0.0017960061392112761" iyy="5.164887871181532e-06" izz="0.001795990912371075">
+        <origin rpy="0 0 -3.14" xyz="0 0 0"/>
+        <primitive_collision/>
+    </xacro:mesh_link>
+
+    <joint name="body_joint" type="fixed">
+        <parent link="base_link"/>
+        <origin rpy="0 0 0" xyz="-0.071275 0 0.080475"/>
+        <child link="box_rotate"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+
+    <xacro:macro name="arm_rotate" params="prefix dir">
+        <xacro:mesh_link name="arm_rotate_${prefix}" mesh="arm.stl" rpy="0 0.2 0" material="silver"
+                         mass="0.1" ixx="3.1492026961385533e-06" iyy="6.396050780815705e-05" izz="6.393627133943758e-05">
+            <origin rpy="0 0.2 0" xyz="0 0 0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="arm_rotate_join_${prefix}" type="fixed">
+            <parent link="box_rotate"/>
+            <origin rpy="0 0.0 0" xyz="0 ${dir*0.153} 0"/>
+            <child link="arm_rotate_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:arm_rotate prefix="L" dir="1"/>
+    <xacro:arm_rotate prefix="R" dir="-1"/>
+
+    <xacro:macro name="turn_bukles" params="prefix dir origin">
+        <xacro:mesh_link name="turn_bukles_link_${prefix}" mesh="turn_${prefix}.stl" rpy="0 0 ${origin}" material="silver"
+                         mass="1" ixx="0.0016688655832571472" iyy="0.0020448255700570341" izz="0.00116395044451649">
+            <origin rpy="0 0 0" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="turn_bukles_joint_${prefix}" type="fixed">
+            <parent link="arm_rotate_${prefix}"/>
+            <origin rpy="0 0 0" xyz="0.071558 ${dir*0.017545} -0.084292"/>
+            <child link="turn_bukles_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:turn_bukles prefix="L" dir="1" origin="0"/>
+    <xacro:turn_bukles prefix="R" dir="-1" origin="-1.57"/>
+
+    <xacro:macro name="body_axis_link" params="prefix dir">
+        <xacro:mesh_link name="body_axis_link_${prefix}" mesh="body_axis.stl" rpy="0 0 1.57" material="silver"
+                         mass="0.5" ixx="0.0002647325735077617" iyy="0.0006894427883912008" izz="0.0007752858571736844">
+            <origin rpy="0 0 1.57" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="body_axis_joint_${prefix}" type="fixed">
+            <parent link="turn_bukles_link_${prefix}"/>
+            <origin rpy="0 0 0" xyz="0 ${dir*-0.060920} -0.001245"/>
+            <child link="body_axis_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:body_axis_link prefix="L" dir="1"/>
+    <xacro:body_axis_link prefix="R" dir="-1"/>
+
+    <xacro:macro name="rocker_bogie_link" params="prefix dir">
+        <xacro:mesh_link name="rocker_bogie_link_${prefix}_1" mesh="rockerbogie_middle_1.stl" rpy="0 0 0" material="silver"
+                         mass="7" ixx="0.24701126860819052" iyy="3.544526366681435" izz="3.335915098740816">
+            <origin rpy="0 0 0" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <!-- Upstream has the rocker pivot fixed; only the bogie articulates.
+             Kept as-is for parity with Phase 0. -->
+        <joint name="rocker_bogie_joint_${prefix}_1" type="fixed">
+            <parent link="body_axis_link_${prefix}"/>
+            <origin rpy="0 0 0" xyz="0.016004 ${dir*0.071485} 0.001353"/>
+            <child link="rocker_bogie_link_${prefix}_1"/>
+            <limit effort="10000.0" velocity="0.5" lower="-0.5" upper="0.5"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+
+        <xacro:mesh_link name="rocker_bogie_link_${prefix}_2" mesh="rockerbogie_front_1.stl" rpy="0 0 0" material="silver"
+                         mass="3" ixx="0.51733003028693055" iyy="1.1690895987181758" izz="0.6934262363396754">
+            <origin rpy="0 0 0" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="rocker_bogie_joint_${prefix}_2" type="revolute">
+            <parent link="rocker_bogie_link_${prefix}_1"/>
+            <origin rpy="0 0 0" xyz="0.099618 0 -0.091275"/>
+            <child link="rocker_bogie_link_${prefix}_2"/>
+            <limit effort="10000.0" velocity="1.0" lower="-0.5" upper="0.5"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:rocker_bogie_link prefix="L" dir="1"/>
+    <xacro:rocker_bogie_link prefix="R" dir="-1"/>
+
+    <!-- Steering brackets and the fixed middle bracket. -->
+    <xacro:macro name="wheel_link" params="prefix dir origin">
+        <xacro:mesh_link name="front_wheel_link_${prefix}" mesh="wheel_link_left_2.stl" rpy="0 0 ${dir*-1.57}" material="silver"
+                         mass="0.8" ixx="0.002865290876023045" iyy="0.004329299643338258" izz="0.0018192303726865125">
+            <origin rpy="0 0 ${dir*-1.57}" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="front_wheel_joint_${prefix}" type="revolute">
+            <parent link="rocker_bogie_link_${prefix}_2"/>
+            <origin rpy="0 0 0" xyz="0.170113 -0.000335 0.076721"/>
+            <child link="front_wheel_link_${prefix}"/>
+            <limit effort="100000.0" velocity="10" lower="-1.15" upper="1.15"/>
+            <axis xyz="0 0 1"/>
+        </joint>
+
+        <xacro:mesh_link name="middle_wheel_link_${prefix}" mesh="wheel_middle_left.stl" rpy="${origin} 0 ${-dir*1.57}" material="silver"
+                         mass="0.3" ixx="0.00023039825512741194" iyy="0.0004706118439697759" izz="0.0004706117933937492">
+            <origin rpy="${origin} 0 ${-dir*1.57}" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="middle_wheel_joint_${prefix}" type="fixed">
+            <parent link="rocker_bogie_link_${prefix}_2"/>
+            <origin rpy="0 0 0" xyz="-0.101456 ${dir*0.000053} -0.100276"/>
+            <child link="middle_wheel_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+
+        <xacro:mesh_link name="rear_wheel_link_${prefix}" mesh="wheel_link_left_2.stl" rpy="0 0 ${-dir*1.57}" material="silver"
+                         mass="0.8" ixx="0.002865290876023045" iyy="0.004329299643338258" izz="0.0018192303726865125">
+            <origin rpy="0 0 ${-dir*1.57}" xyz="0 0 0.0"/>
+            <primitive_collision/>
+        </xacro:mesh_link>
+
+        <joint name="rear_wheel_joint_${prefix}" type="revolute">
+            <parent link="rocker_bogie_link_${prefix}_1"/>
+            <origin rpy="0 0 0" xyz="-0.311763 0 -0.030379"/>
+            <child link="rear_wheel_link_${prefix}"/>
+            <limit effort="100000.0" velocity="3" lower="-1.15" upper="1.15"/>
+            <axis xyz="0 0 1"/>
+        </joint>
+    </xacro:macro>
+    <xacro:wheel_link prefix="L" dir="1" origin="1.57"/>
+    <xacro:wheel_link prefix="R" dir="-1" origin="-3.14"/>
+
+    <!-- The six driven wheels. -->
+    <xacro:macro name="wheel_tyre" params="name dir origin">
+        <!-- Right side is yawed 180 degrees; dir mirrors the offset so the tyre
+             centre stays inboard on both sides. -->
+        <xacro:mesh_link name="${name}" mesh="wheel.stl" rpy="-1.57 0 ${origin}" material="black"
+                         mass="0.8" ixx="0.0024621497157168697" iyy="0.002462972407314915" izz="0.0035658885464652456">
+            <origin rpy="-1.57 0 ${origin}" xyz="0 0 0.0"/>
+            <primitive_collision>
+                <collision>
+                    <origin rpy="1.5708 0 0" xyz="0 ${dir*wheel_y} 0"/>
+                    <geometry><cylinder radius="${wheel_r}" length="${wheel_w}"/></geometry>
+                </collision>
+            </primitive_collision>
+        </xacro:mesh_link>
+    </xacro:macro>
+
+    <xacro:macro name="wheel" params="prefix dir origin prefix_1">
+        <xacro:wheel_tyre name="front_wheel_link_${prefix}" dir="${dir}" origin="${origin}"/>
+        <joint name="front_wheel_joint_${prefix}" type="continuous">
+            <parent link="front_wheel_link_${prefix_1}"/>
+            <origin rpy="0 0 0" xyz="0.006231 ${dir*0.019544} -0.169991"/>
+            <child link="front_wheel_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+
+        <xacro:wheel_tyre name="middle_wheel_link_${prefix}" dir="${dir}" origin="${origin}"/>
+        <joint name="middle_wheel_joint_${prefix}" type="continuous">
+            <parent link="middle_wheel_link_${prefix_1}"/>
+            <origin rpy="0 0 0" xyz="0.006691 ${dir*0.100382} 0.005425"/>
+            <child link="middle_wheel_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+
+        <xacro:wheel_tyre name="rear_wheel_link_${prefix}" dir="${dir}" origin="${origin}"/>
+        <joint name="rear_wheel_joint_${prefix}" type="continuous">
+            <parent link="rear_wheel_link_${prefix_1}"/>
+            <origin rpy="0 0 0" xyz="-0.000203 ${dir*0.008131} -0.160678"/>
+            <child link="rear_wheel_link_${prefix}"/>
+            <axis xyz="0 1 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:wheel prefix="left" dir="1" origin="0" prefix_1="L"/>
+    <xacro:wheel prefix="right" dir="-1" origin="3.14" prefix_1="R"/>
+
+    <joint name="imu_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="imu_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="imu_link"/>
+</robot>

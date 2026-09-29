@@ -23,19 +23,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         mesa-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the OSR ROS packages into a workspace. osr_gazebo ships a COLCON_IGNORE
-# upstream; drop it here, in the image, rather than editing the submodule.
+# Copy the workspace: the osr-rover-code submodule plus osr_gz. osr_gazebo ships a
+# COLCON_IGNORE upstream; drop it here, in the image, so the upstream package can
+# still be run side by side with osr_gz for comparison.
 WORKDIR /osr_ws
-COPY ros_ws/src/osr-rover-code/ROS src/osr
-RUN rm -f src/osr/osr_gazebo/COLCON_IGNORE
+COPY ros_ws/src src
+RUN rm -f src/osr-rover-code/ROS/osr_gazebo/COLCON_IGNORE
 
 RUN apt-get update \
     && rosdep update --rosdistro humble \
     && rosdep install --from-paths src --ignore-src --rosdistro humble -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN . /opt/ros/humble/setup.sh \
-    && colcon build --packages-select osr_interfaces osr_control osr_bringup osr_gazebo
+RUN . /opt/ros/humble/setup.sh && colcon build
 
 RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc \
     && echo 'source /osr_ws/install/setup.bash' >> /root/.bashrc
