@@ -146,7 +146,7 @@ def main():
     ap.add_argument('--random-heading', action='store_true')
     ap.add_argument('--spawn-jitter', type=float, default=0.0)
     ap.add_argument('--world', default='jezero_delta')
-    ap.add_argument('--goal-mode', default='segments', choices=['segments', 'route'])
+    ap.add_argument('--goal-mode', default='segments', choices=['segments', 'route', 'map'])
     ap.add_argument('--goal-bonus', default='decay', choices=['decay', 'constant'],
                     help='decay: bonus shrinks with the budget used; constant: full bonus')
     ap.add_argument('--clock-obs', action='store_true',

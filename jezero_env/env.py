@@ -46,7 +46,11 @@ MAX_TILT = math.radians(35)
 BUDGET_FACTOR = 2.5    # step budget = straight-line time at full speed x this
 SPAWN_ATTEMPTS = 5
 MIN_GOAL_DIST = 5.0    # m: jittered spawns stay at least this far from the goal
-ROUTE_GOAL_DIST = (10.0, 60.0)   # m: start-goal distance range for goal_mode='route'
+ROUTE_GOAL_DIST = (10.0, 60.0)   # m: start-goal distance range for goal_mode='route' and 'map'
+# goal_mode='map': a region training never enters (x0, x1, y0, y1), around the
+# unseen segment 3 (sol 455 -> 461): its goal and most of the route to it.
+DEFAULT_HOLDOUT = (-100.0, -35.0, -18.0, 45.0)
+MAP_MARGIN = 8.0                 # m: map-mode starts/goals stay this far inside the edge
 GOAL_ROCK_CLEARANCE = 1.5        # m: random goals stay this far from a rock's edge
 # 1.5 m leaves only 15% of route points eligible on k=0.05; with 2,000 tries and
 # the waypoint fallback below that's enough (the ppo_rocks crash was 200 tries
@@ -144,6 +148,9 @@ class JezeroEnv(gym.Env):
         segments' route, ROUTE_GOAL_DIST apart, either direction: many
         start/goal pairs instead of a few, so the policy has to generalise
         (a segments-trained policy reached 42% on an unseen segment).
+        'map' picks them anywhere on the map, ROUTE_GOAL_DIST apart, never in
+        or across the `holdout` box, so that region stays unseen for evaluation.
+    holdout: (x0, x1, y0, y1) for goal_mode='map'; default DEFAULT_HOLDOUT.
     goal_bonus: 'decay' (default): GOAL_BONUS x the fraction of the budget left,
         so the reward depends on time the policy can't see. 'constant': the full
         GOAL_BONUS whenever the goal is reached, so the reward doesn't depend on
@@ -163,7 +170,7 @@ class JezeroEnv(gym.Env):
 
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
-                 clock_obs: bool = False, goal_bonus: str = 'decay',
+                 clock_obs: bool = False, goal_bonus: str = 'decay', holdout=None,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
@@ -174,9 +181,10 @@ class JezeroEnv(gym.Env):
         self.segments = tuple(segments)
         self.random_heading = random_heading
         self.spawn_jitter = spawn_jitter
-        if goal_mode not in ('segments', 'route'):
+        if goal_mode not in ('segments', 'route', 'map'):
             raise ValueError(f'goal_mode: {goal_mode!r}')
         self.goal_mode = goal_mode
+        self.holdout = tuple(holdout) if holdout is not None else DEFAULT_HOLDOUT
         self.max_episode_seconds = max_episode_seconds
         self.heightmap = Heightmap(world, self.sim.meta)
         self.rocks = Rocks(self.sim.meta.get('rocks', []))
@@ -225,6 +233,29 @@ class JezeroEnv(gym.Env):
         seg = int(self.np_random.choice(self.segments))
         return self.waypoints[seg], self.waypoints[seg + 1]
 
+    def in_holdout(self, x, y):
+        x0, x1, y0, y1 = self.holdout
+        return x0 <= x <= x1 and y0 <= y <= y1
+
+    def _map_pair(self):
+        """Random start and goal anywhere on the map, ROUTE_GOAL_DIST apart,
+        clear of rocks, with neither end in the holdout box and the straight
+        line between them not crossing it. Falls back to a route pair."""
+        lo, hi = ROUTE_GOAL_DIST
+        half = self.heightmap.extent / 2 - MAP_MARGIN
+        for _ in range(5000):
+            ax, ay, bx, by = self.np_random.uniform(-half, half, 4)
+            d = math.hypot(bx - ax, by - ay)
+            if not lo <= d <= hi:
+                continue
+            if any(self.in_holdout(ax + t * (bx - ax), ay + t * (by - ay))
+                   for t in np.linspace(0.0, 1.0, int(d) + 2)):
+                continue
+            if (self.rocks.clearance(bx, by) >= GOAL_ROCK_CLEARANCE
+                    and self.rocks.clearance(ax, ay) >= ROCK_SPAWN_CLEARANCE):
+                return {'x': float(ax), 'y': float(ay)}, {'x': float(bx), 'y': float(by)}
+        return self._route_pair()
+
     def _spawn_xy(self, start, goal):
         if self.spawn_jitter <= 0:
             return start['x'], start['y']
@@ -234,7 +265,8 @@ class JezeroEnv(gym.Env):
             x, y = start['x'] + r * math.cos(th), start['y'] + r * math.sin(th)
             if (self.heightmap.inside(x, y, margin=5.0)
                     and math.hypot(goal['x'] - x, goal['y'] - y) >= MIN_GOAL_DIST
-                    and self.rocks.clearance(x, y) >= ROCK_SPAWN_CLEARANCE):
+                    and self.rocks.clearance(x, y) >= ROCK_SPAWN_CLEARANCE
+                    and not (self.goal_mode == 'map' and self.in_holdout(x, y))):
                 return x, y
         return start['x'], start['y']
 
@@ -296,6 +328,9 @@ class JezeroEnv(gym.Env):
         seg = int(self.np_random.choice(self.segments))
         if self.goal_mode == 'route':
             start, goal = self._route_pair()
+        elif self.goal_mode == 'map':
+            start, goal = self._map_pair()
+            seg = -1
         else:
             start, goal = self.waypoints[seg], self.waypoints[seg + 1]
         self.segment = seg

@@ -63,6 +63,12 @@ def main():
     ap.add_argument('--corridor', type=float, default=20.0, help='m either side of the route')
     ap.add_argument('--clear', type=float, default=2.0, help='m kept clear around waypoints')
     ap.add_argument('--resolution', type=int, default=2049, help='heightmap px per side (2^n+1)')
+    ap.add_argument('--everywhere', action='store_true',
+                    help='rocks over the whole map, not just the route corridor')
+    ap.add_argument('--keep-rocks-of', metavar='WORLD',
+                    help="keep this rock world's rocks exactly (e.g. jezero_delta_rocks_k05) and, "
+                         'with --everywhere, add new ones only outside its corridor, so '
+                         'evaluations along the route see the same rocks in both worlds')
     args = ap.parse_args()
 
     base = os.path.join(PKG, 'worlds', args.world)
@@ -87,27 +93,43 @@ def main():
         return ((1 - fr) * ((1 - fc) * hz[r0, c0] + fc * hz[r0, c0 + 1])
                 + fr * ((1 - fc) * hz[r0 + 1, c0] + fc * hz[r0 + 1, c0 + 1]))
 
-    # Area of the corridor, by Monte Carlo over the map.
+    # Where new rocks go: the route corridor; with --everywhere, the whole map;
+    # with --keep-rocks-of too, the whole map outside the kept world's corridor.
     rng = np.random.default_rng(args.seed)
     probe = rng.uniform(-half, half, (200_000, 2))
     in_corr = dist_to_polyline(probe[:, 0], probe[:, 1], wps) <= args.corridor
-    area = in_corr.mean() * (2 * half) ** 2
+    if args.everywhere and args.keep_rocks_of:
+        region = lambda x, y: dist_to_polyline(np.array(x), np.array(y), wps) > args.corridor
+        frac = 1.0 - in_corr.mean()
+    elif args.everywhere:
+        region = lambda x, y: True
+        frac = 1.0
+    else:
+        region = lambda x, y: dist_to_polyline(np.array(x), np.array(y), wps) <= args.corridor
+        frac = in_corr.mean()
+    area = frac * (2 * half) ** 2
 
-    mids, counts = expected_counts(args.k, area, args.d_min, args.d_max)
     rocks = []
+    if args.keep_rocks_of:
+        kept = yaml.safe_load(open(os.path.join(PKG, 'worlds', args.keep_rocks_of + '.yaml')))['rocks']
+        rocks = [(r['x'], r['y'], float(ground(np.array(r['x']), np.array(r['y']))), r['d']) for r in kept]
+        print(f'kept {len(rocks)} rocks from {args.keep_rocks_of}')
+    mids, counts = expected_counts(args.k, area, args.d_min, args.d_max)
     for d, lam in zip(mids, counts):
         for _ in range(rng.poisson(lam)):
             for _ in range(50):
                 x, y = rng.uniform(-half, half, 2)
-                if dist_to_polyline(np.array(x), np.array(y), wps) > args.corridor:
+                if not region(x, y):
                     continue
                 if min(math.hypot(x - wx, y - wy) for wx, wy in wps) < args.clear + d / 2:
                     continue
                 rocks.append((float(x), float(y), float(ground(np.array(x), np.array(y))), float(d)))
                 break
+    if args.keep_rocks_of:
+        area = (2 * half) ** 2 if args.everywhere else in_corr.mean() * (2 * half) ** 2
     rocks.sort(key=lambda r: -r[3])
 
-    name = f"{args.world}_rocks_k{round(args.k * 100):02d}"
+    name = f"{args.world}_rocks_k{round(args.k * 100):02d}" + ('_full' if args.everywhere else '')
     ext = meta['extent_m']
     res = args.resolution
     if (res - 1) & (res - 2):
@@ -172,7 +194,7 @@ def main():
 
     ds = np.array([r[3] for r in rocks])
     cover = sum(math.pi * d * d / 4 for d in ds) / area
-    print(f'{name}: {len(rocks)} rocks in {area:.0f} m^2 of corridor; '
+    print(f'{name}: {len(rocks)} rocks in {area:.0f} m^2 (corridor, or the whole map with --everywhere); '
           f'diameter median {np.median(ds):.2f} m, max {ds.max():.2f} m; '
           f'>=0.3 m: {int(np.sum(ds >= 0.3))}, >=0.5 m: {int(np.sum(ds >= 0.5))}; '
           f'area covered {cover * 100:.1f}% (model F(0.2 m) = {args.k * math.exp(-(1.79 + 0.152 / args.k) * args.d_min) * 100:.1f}%)')
