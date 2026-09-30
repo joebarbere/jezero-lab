@@ -47,9 +47,11 @@ BUDGET_FACTOR = 2.5    # step budget = straight-line time at full speed x this
 SPAWN_ATTEMPTS = 5
 MIN_GOAL_DIST = 5.0    # m: jittered spawns stay at least this far from the goal
 ROUTE_GOAL_DIST = (10.0, 60.0)   # m: start-goal distance range for goal_mode='route'
-GOAL_ROCK_CLEARANCE = 1.0        # m: random goals stay this far from a rock's edge
-# (1.5 m left only 15% of route points eligible on k=0.05, and the sampler
-# eventually failed mid-training; 1.0 m leaves 42%.)
+GOAL_ROCK_CLEARANCE = 1.5        # m: random goals stay this far from a rock's edge
+# 1.5 m leaves only 15% of route points eligible on k=0.05; with 2,000 tries and
+# the waypoint fallback below that's enough (the ppo_rocks crash was 200 tries
+# and no fallback). 1.0 m (tried in c0_control) put goals among rocks and made
+# the task much harder: timeouts stalled a median 6.4 m short of the goal.
 
 PROGRESS_GAIN = 1.0
 GOAL_BONUS = 100.0

@@ -633,12 +633,38 @@ added (cheap).
 
 | # | Run | Change | Status |
 |---|---|---|---|
-| 0 | `c0_control` | the `ppo_rocks` setup + `clock_obs`, 1.5M steps: the new control | running |
+| 0 | `c0_control` | `ppo_rocks` setup + `clock_obs`, 1.5M | **invalid as a control**: also had goal clearance 1.0 m (see below) |
+| 0b | `c0b_control` | `ppo_rocks` setup + `clock_obs`, goal clearance back to 1.5 m, 1.5M: the control | running |
 | 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
 | 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
+
+### c0_control: why it isn't the control (2026-09-29)
+
+It changed three things at once: the clock (intended); the reset fix (a
+correctness fix, kept); and, unintentionally, goal-to-rock clearance 1.5 → 1.0 m,
+which I'd lowered while fixing the `ppo_rocks` crash (the extra tries and the
+fallback alone fix the crash). Result, far below `ppo_rocks`: training goal rate
+9–21% (vs 60–79%), held-out *unseen* 0% at every checkpoint, *hard* ≤ 25%, and
+74–83% of episodes timing out. Not freezing: timeouts drove a median ~47 m
+(stuck only 10–14 s) and covered 67–79% of the way, but stalled a median 6.4 m
+short of goals that now sit among rocks. **Goals among rocks are much harder**
+(worth keeping as a later curriculum stage).
+
+Also: the reset fix alone moved the baseline's score on the same 12 *hard* spawns
+from 42% to 67%. Tip-overs among boulders are chaotic enough that small
+differences at the start flip outcomes. From here the reference is always the
+baseline on the current code, evaluated by the same watcher.
+
+**Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
+is allowed; each is tagged with the hardware it implies (the running bill of
+materials: IMU ~$25–35, bogie-angle encoders, feedback servos, a depth camera for
+terrain). Terrain inputs start idealised (ground-truth heightmap, 360°) but must
+be re-tested with a realistic simulated camera (forward field of view,
+occlusion, noise, latency) before any claim about hardware. Inputs no sensor
+can provide (contacts, true slip, exact rock distances) go to the critic only.
 
 ### Next steps, if picked up again
 
