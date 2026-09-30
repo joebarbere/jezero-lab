@@ -144,6 +144,11 @@ class JezeroEnv(gym.Env):
         segments' route, ROUTE_GOAL_DIST apart, either direction: many
         start/goal pairs instead of a few, so the policy has to generalise
         (a segments-trained policy reached 42% on an unseen segment).
+    goal_bonus: 'decay' (default): GOAL_BONUS x the fraction of the budget left,
+        so the reward depends on time the policy can't see. 'constant': the full
+        GOAL_BONUS whenever the goal is reached, so the reward doesn't depend on
+        a hidden clock (the per-step time cost still favours finishing sooner).
+        Chosen over observing the clock, which hurt training (see PLAN.md).
     clock_obs: append the fraction of the step budget remaining. The goal bonus
         and truncation both depend on it, so without it the reward isn't a
         function of the observation. On for every run from c0_control on; off
@@ -158,7 +163,7 @@ class JezeroEnv(gym.Env):
 
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
-                 clock_obs: bool = False,
+                 clock_obs: bool = False, goal_bonus: str = 'decay',
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
@@ -177,6 +182,9 @@ class JezeroEnv(gym.Env):
         self.rocks = Rocks(self.sim.meta.get('rocks', []))
         self.rock_patch = rock_patch
         self.clock_obs = clock_obs
+        if goal_bonus not in ('decay', 'constant'):
+            raise ValueError(f'goal_bonus: {goal_bonus!r}')
+        self.goal_bonus = goal_bonus
         self.physics_steps = int(round(CONTROL_PERIOD / step_size))
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
@@ -338,7 +346,8 @@ class JezeroEnv(gym.Env):
         self._prev_dist = dist
         terminated, event = False, None
         if self._at_destination(s):
-            parts['goal'] = GOAL_BONUS * (1.0 - self.steps / self.budget)
+            parts['goal'] = (GOAL_BONUS if self.goal_bonus == 'constant'
+                             else GOAL_BONUS * (1.0 - self.steps / self.budget))
             terminated, event = True, 'goal'
         elif abs(s.roll) > MAX_TILT or abs(s.pitch) > MAX_TILT:
             parts['tipped'] = -TIP_PENALTY
