@@ -640,7 +640,7 @@ added (cheap).
 | – | control | no clock, original reset, `ppo_rocks` setup: learns on 3/3 seeds (69–92% at 400k) | **established** |
 | 0e | `bonusc_s0/s1/s2` | constant goal bonus instead of the decaying one | done: **no better** (70/92/13% vs 68/90/73%); not adopted |
 | 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
-| 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | running |
+| 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | done: **no measurable gain** (hard 52% = 52%, unseen 67% vs 73%); not adopted at 400k |
 | 3 | | look-ahead | |
 | 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
@@ -763,6 +763,22 @@ evaluated on `jezero_delta_rocks_k05_full` (`eval/compare.py`):
 
 **New baseline:** `--world jezero_delta_rocks_k05_full --goal-mode map`, plus the
 control's settings. Experiments 2–5 build on it.
+
+### Experiment 2: proprioception, no measurable gain at 400k (2026-09-30)
+
+| | hard goal (tipped) | unseen goal (tipped) |
+|---|---|---|
+| exp1 s0 / s1 / s2 | 69 / 6 / 81% | 62 / 69 / 88% |
+| **exp1 mean (range)** | **52%** (6–81) | **73%** (62–88) |
+| exp2 s0 / s1 / s2 | 75 / 44 / 38% | 75 / 50 / 75% |
+| **exp2 mean (range)** | **52%** (38–75) | **67%** (50–75) |
+
+Pooled: hard 25/48 both; unseen 32/48 vs 35/48; hard tip-overs ~23% both.
+Training goal rates were similar or slightly higher (71/76/71% vs 68/68/66%), and
+one seed tipped much less in training (8% vs 24%), but that didn't carry to the
+held-out spawns. Not adopted: it adds inputs (and hardware) with no measured gain.
+Caveat: 400k may be too short to learn to use 16 new inputs; worth a retry at
+full length if tip-overs and stalls persist in the final configuration.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
