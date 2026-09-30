@@ -634,7 +634,8 @@ added (cheap).
 | # | Run | Change | Status |
 |---|---|---|---|
 | 0 | `c0_control` | `ppo_rocks` setup + `clock_obs`, 1.5M | **invalid as a control**: also had goal clearance 1.0 m (see below) |
-| 0b | `c0b_control` | `ppo_rocks` setup + `clock_obs`, goal clearance back to 1.5 m, 1.5M: the control | running |
+| 0b | `c0b_control` | `ppo_rocks` setup + `clock_obs`, goal clearance back to 1.5 m, 1.5M | done: **fails like c0** (training goal 7–15%, held-out 0%) |
+| 0c | `c0c_control` | exactly the `ppo_rocks` setup on the current code, **no clock** | running: clock vs seed variance |
 | 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
@@ -657,6 +658,20 @@ Also: the reset fix alone moved the baseline's score on the same 12 *hard* spawn
 from 42% to 67%. Tip-overs among boulders are chaotic enough that small
 differences at the start flip outcomes. From here the reference is always the
 baseline on the current code, evaluated by the same watcher.
+
+### c0b_control: the clock, or luck? (2026-09-30)
+
+With the task restored, `c0b` still trained far below `ppo_rocks`: training goal
+rate 7–15% at 1–1.5M (vs 60–79%), 78–87% timeouts, held-out hard 0% at every
+checkpoint but one, unseen 0% throughout. Its timeouts aren't timid (median 53 m
+driven, 13 s stuck, 78% of the way) but stall ~6 m from the goal.
+
+**The environment isn't the problem**: `ppo_rocks` checkpoints trained on the old
+code, evaluated on the current code, still work (1.1M: hard 50%, unseen 17%;
+2.1M: hard **75%**, unseen 8%; baseline on the same spawns 67% / 83%). Left:
+the clock observation itself, or run-to-run variance (the reset fix changes every
+trajectory, so c0b is effectively another seed). `c0c` (no clock, current code)
+separates them. If it fails too, results need several seeds per experiment.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
