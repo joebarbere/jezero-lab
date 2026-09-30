@@ -25,7 +25,7 @@ import statistics
 import time
 from multiprocessing import get_context
 
-from eval.evaluate import SEED0, _episode, _init
+from eval.evaluate import SEED0, _episode, _init, obs_options
 
 STEP_RE = re.compile(r'ppo_(\d+)_steps\.zip$')
 
@@ -68,14 +68,14 @@ def main():
     from torch.utils.tensorboard import SummaryWriter
     cfg = json.load(open(os.path.join(args.run, 'config.json')))
     world = cfg.get('env_kwargs', {}).get('world', cfg.get('world', 'jezero_delta'))
-    rock_patch = cfg.get('env_kwargs', {}).get('rock_patch', False)
+    obs = obs_options(config_path=os.path.join(args.run, 'config.json'))
     out = os.path.join(args.run, 'eval')
     os.makedirs(out, exist_ok=True)
     writer = SummaryWriter(out)
     tasks = [(v, SEED0 + i) for v in args.variants for i in range(args.episodes)]
 
     ctx = get_context('spawn')
-    with ctx.Pool(args.workers, initializer=_init, initargs=(None, world, rock_patch)) as pool:
+    with ctx.Pool(args.workers, initializer=_init, initargs=(None, world, obs)) as pool:
         base_path = os.path.join(out, 'baseline.json')
         if os.path.exists(base_path):
             baseline = json.load(open(base_path))

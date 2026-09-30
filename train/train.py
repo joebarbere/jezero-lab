@@ -147,6 +147,8 @@ def main():
     ap.add_argument('--spawn-jitter', type=float, default=0.0)
     ap.add_argument('--world', default='jezero_delta')
     ap.add_argument('--goal-mode', default='segments', choices=['segments', 'route'])
+    ap.add_argument('--clock-obs', action='store_true',
+                    help='observe the fraction of the step budget remaining (all runs from c0_control)')
     ap.add_argument('--rock-patch', action='store_true',
                     help='observe the fine 0.4 m terrain patch (sees baked-in rocks)')
     ap.add_argument('--torch-threads', type=int, default=2)
@@ -158,7 +160,8 @@ def main():
     os.makedirs(out, exist_ok=True)
     env_kwargs = dict(world=args.world, segments=tuple(args.segments),
                       random_heading=args.random_heading, spawn_jitter=args.spawn_jitter,
-                      goal_mode=args.goal_mode, rock_patch=args.rock_patch)
+                      goal_mode=args.goal_mode, rock_patch=args.rock_patch,
+                      clock_obs=args.clock_obs)
     config = {**vars(args), 'env_kwargs': env_kwargs, 'git_revision': git_revision()}
     with open(os.path.join(out, 'config.json'), 'w') as f:
         json.dump(config, f, indent=2)

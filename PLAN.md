@@ -596,6 +596,50 @@ unstable late (hard 50% → 0% with 75% tip-overs at 2.6M). So: select
 checkpoints by held-out score, consider a decaying learning rate, and use 16–24
 spawns for any decision.
 
+### Inputs the policy doesn't get yet (reviewed 2026-09-29)
+
+Today it observes the goal (in the rover frame, and distance), heading error,
+roll, pitch, body-frame velocities, yaw rate, the previous action, a 7×7 terrain
+patch at 1 m (±3 m) and, with `rock_patch`, a 9×9 at 0.4 m (±1.6 m). Against the
+failures seen so far:
+
+0. **Bug: the policy can't see its clock.** The goal bonus is
+   `100 × (1 − steps/budget)` and episodes truncate when the budget runs out,
+   but neither steps nor budget is observed, so the reward isn't a function of
+   what the policy sees. Fix: observe the fraction of budget remaining
+   (`clock_obs`, on for every run from here).
+1. **Proprioception.** Wheel speed vs body speed (slip: the scarp stall is wheels
+   turning while the body doesn't move; the real OSR measures wheel speed with its
+   RoboClaw encoders), roll/pitch *rates* (tip warning), bogie and steering angles
+   (suspension articulation, high-centring), time since last progress (the policy
+   can't tell "stuck for 20 s" from "just started").
+2. **Look-ahead.** The coarse patch reaches ±3 m, i.e. 10 s of driving at
+   0.3 m/s. A height profile along the goal bearing out to 10–15 m, plus slope
+   summaries.
+3. **Varied worlds, the generalisation lever** (simulator, not sensors). Rocks
+   everywhere, start/goal pairs anywhere with a spatially held-out region, more
+   HiRISE patches along Perseverance's route (the pipeline and `jezero_rim` exist)
+   with whole terrains held out; randomised rock abundance (k 0.03–0.08), wheel
+   friction (~0.5–0.9) and a little sensor noise.
+4. **Privileged critic** (later). Simulator-only information (wheel contacts,
+   true slip, exact rock distances) to the critic only, not the actor: faster
+   learning without a policy that needs sensors the rover lacks.
+
+Hardware check: upstream's OSR code reads motor encoders (RoboClaw) and battery
+current (INA260) but has **no IMU driver**; the roll/pitch inputs assume one is
+added (cheap).
+
+### Experiment order (one change per run, same held-out spawns, `eval.watch --follow`)
+
+| # | Run | Change | Status |
+|---|---|---|---|
+| 0 | `c0_control` | the `ppo_rocks` setup + `clock_obs`, 1.5M steps: the new control | running |
+| 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
+| 2 | | proprioception | |
+| 3 | | look-ahead | |
+| 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
+| 5 | | terrain CNN; privileged critic | |
+
 ### Next steps, if picked up again
 
 1. Start and goal pairs across the whole map, not just along the route, with a

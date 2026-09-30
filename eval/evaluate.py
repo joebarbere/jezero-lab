@@ -47,6 +47,27 @@ def load_policy(model_path):
     return policy
 
 
+OBS_OPTIONS = ('rock_patch', 'clock_obs')
+
+
+def obs_options(model_path=None, config_path=None):
+    """The observation options a checkpoint was trained with, from its run's
+    config.json (searched upward from the checkpoint). Options older configs
+    don't mention were off when they were trained."""
+    path = config_path
+    if path is None and model_path:
+        d = os.path.dirname(os.path.abspath(model_path))
+        while d != os.path.dirname(d):
+            if os.path.exists(os.path.join(d, 'config.json')):
+                path = os.path.join(d, 'config.json')
+                break
+            d = os.path.dirname(d)
+    if not path:
+        return None
+    kwargs = json.load(open(path)).get('env_kwargs', {})
+    return {k: bool(kwargs.get(k, False)) for k in OBS_OPTIONS}
+
+
 _policies = {}
 
 
@@ -59,12 +80,12 @@ def _get_policy(model_path):
     return _policies[model_path]
 
 
-def _init(model_path, world, rock_patch):
+def _init(model_path, world, obs_kwargs):
     global _env, _policy
     import torch
     torch.set_num_threads(1)
     from jezero_env.env import JezeroEnv
-    _env = JezeroEnv(world=world, rock_patch=rock_patch)
+    _env = JezeroEnv(world=world, **obs_kwargs)
     if model_path:
         _policy = load_policy(model_path)
 
@@ -125,7 +146,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('model', help="policy .zip (final.zip or a checkpoint), or '-' for baseline only")
     ap.add_argument('--world', default='jezero_delta')
-    ap.add_argument('--rock-patch', action='store_true', help='env option the policy was trained with')
+    ap.add_argument('--rock-patch', action='store_true',
+                    help='only if the run has no config.json (read from it otherwise)')
     ap.add_argument('--episodes', type=int, default=30, help='per variant')
     ap.add_argument('--workers', type=int, default=4)
     ap.add_argument('--variants', nargs='+', default=list(VARIANTS))
@@ -134,11 +156,13 @@ def main():
 
     ctx = get_context('spawn')
     tasks = [(v, SEED0 + i) for v in args.variants for i in range(args.episodes)]
-    with ctx.Pool(args.workers, initializer=_init, initargs=(None, args.world, args.rock_patch)) as pool:
+    obs = (obs_options(args.model) if args.model != '-' else None) or {'rock_patch': args.rock_patch}
+    print(f'observation options: {obs}')
+    with ctx.Pool(args.workers, initializer=_init, initargs=(None, args.world, obs)) as pool:
         rows = pool.map(_episode, [(v, s, 'baseline') for v, s in tasks], chunksize=1)
     if args.model != '-':
         with ctx.Pool(args.workers, initializer=_init,
-                      initargs=(args.model, args.world, args.rock_patch)) as pool:
+                      initargs=(args.model, args.world, obs)) as pool:
             rows += pool.map(_episode, [(v, s, 'policy') for v, s in tasks], chunksize=1)
 
     if args.out:

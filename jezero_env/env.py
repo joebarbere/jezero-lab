@@ -142,6 +142,10 @@ class JezeroEnv(gym.Env):
         segments' route, ROUTE_GOAL_DIST apart, either direction: many
         start/goal pairs instead of a few, so the policy has to generalise
         (a segments-trained policy reached 42% on an unseen segment).
+    clock_obs: append the fraction of the step budget remaining. The goal bonus
+        and truncation both depend on it, so without it the reward isn't a
+        function of the observation. On for every run from c0_control on; off
+        (the default) reproduces the observation older checkpoints were trained on.
     rock_patch: append a 9x9 patch at 0.4 m of terrain heights (relative to the
         rover). On rock worlds the heightmap includes the rocks, so this is how
         the policy sees rocks the 1 m patch misses.
@@ -152,6 +156,7 @@ class JezeroEnv(gym.Env):
 
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
+                 clock_obs: bool = False,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
@@ -169,10 +174,11 @@ class JezeroEnv(gym.Env):
         self.heightmap = Heightmap(world, self.sim.meta)
         self.rocks = Rocks(self.sim.meta.get('rocks', []))
         self.rock_patch = rock_patch
+        self.clock_obs = clock_obs
         self.physics_steps = int(round(CONTROL_PERIOD / step_size))
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        size = OBS_SIZE + (FINE_PATCH * FINE_PATCH if rock_patch else 0)
+        size = OBS_SIZE + (1 if clock_obs else 0) + (FINE_PATCH * FINE_PATCH if rock_patch else 0)
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(size,), dtype=np.float32)
 
         g = np.arange(PATCH) - (PATCH - 1) / 2
@@ -255,11 +261,13 @@ class JezeroEnv(gym.Env):
         ground = self.heightmap.sample(s.x, s.y)
         terrain = self.heightmap.sample(px, py) - ground
         parts = []
+        if self.clock_obs:
+            parts.append([1.0 - self.steps / self.budget])
         if self.rock_patch:
             fx = s.x + c * self._fine_fwd - si * self._fine_left
             fy = s.y + si * self._fine_fwd + c * self._fine_left
             # Rock worlds bake rocks into the (12.5 cm) heightmap, so this sees them.
-            parts = [self.heightmap.sample(fx, fy) - ground]
+            parts.append(self.heightmap.sample(fx, fy) - ground)
         obs = np.concatenate([
             [gx / GOAL_RANGE, gy / GOAL_RANGE, min(dist / GOAL_RANGE, 3.0)],
             [math.sin(err), math.cos(err)],
@@ -354,7 +362,7 @@ class JezeroEnv(gym.Env):
         ep['steer_change'] += abs(a[1] - ep['_turn'])
         ep['_turn'] = a[1]
 
-        info = {'distance': dist, 'event': event, 'sim_time': s.sim_time - self.t0,
+        info = {'distance': dist, 'event': event, 'sim_time': self.steps * CONTROL_PERIOD,   # exact; absolute sim time differs across resets
                 'x': s.x, 'y': s.y}
         if terminated or truncated:
             info['episode_stats'] = self._episode_stats(ep, event, dist, s)

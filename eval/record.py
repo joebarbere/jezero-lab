@@ -19,7 +19,7 @@ import time
 from gz.msgs10.image_pb2 import Image
 from gz.transport13 import Node
 
-from eval.evaluate import SEED0, VARIANTS, _vecnormalize_path
+from eval.evaluate import SEED0, VARIANTS, _vecnormalize_path, obs_options
 from jezero_env.baseline import policy as baseline_policy
 from jezero_env.env import JezeroEnv
 
@@ -47,7 +47,9 @@ def main():
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
 
-    env = JezeroEnv(world=args.world, rock_patch=args.rock_patch, camera=True,
+    obs = (obs_options(args.controller) if args.controller != 'baseline' else None) \
+        or {'rock_patch': args.rock_patch}
+    env = JezeroEnv(world=args.world, **obs, camera=True,
                     max_episode_seconds=args.max_seconds, **VARIANTS[args.variant])
     act = baseline_policy if args.controller == 'baseline' else load_policy(args.controller)
 
