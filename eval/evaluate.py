@@ -47,7 +47,7 @@ def load_policy(model_path):
     return policy
 
 
-OBS_OPTIONS = ('rock_patch', 'clock_obs')
+OBS_OPTIONS = ('rock_patch', 'clock_obs', 'proprio')
 
 
 def obs_options(model_path=None, config_path=None):

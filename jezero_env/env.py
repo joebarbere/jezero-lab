@@ -34,7 +34,7 @@ import numpy as np
 from gymnasium import spaces
 from osgeo import gdal
 
-from jezero_env.sim import OSR_GZ, JezeroSim
+from jezero_env.sim import OSR_GZ, SIM_WHEEL_RADIUS, JezeroSim
 
 gdal.UseExceptions()
 
@@ -81,6 +81,19 @@ OBS_LAYOUT = (
 )
 OBS_SIZE = sum(n for _, n in OBS_LAYOUT)
 FINE_LAYOUT = (('rocks', FINE_PATCH * FINE_PATCH),)   # appended when rock_patch=True
+# proprio=True, appended after the clock (if any) and before the fine patch.
+# Hardware on a real OSR in brackets (see PLAN.md, sensor policy).
+PROPRIO_LAYOUT = (
+    ('wheel_speed', 6),       # m/s surface speed per wheel [RoboClaw encoders: present]
+    ('slip', 1),              # mean wheel speed - body forward speed [encoders + IMU]
+    ('roll_pitch_rate', 2),   # rad/s, body frame [IMU gyro]
+    ('corner_angle', 4),      # rad, actual steering [feedback servos / corner encoders]
+    ('bogie_angle', 2),       # rad [bogie pivot encoders]
+    ('no_progress', 1),       # s since the goal distance last improved by PROGRESS_STEP, /30 [computed]
+)
+PROPRIO_SIZE = sum(n for _, n in PROPRIO_LAYOUT)
+PROGRESS_STEP = 0.25   # m
+NO_PROGRESS_SCALE = 30.0  # s
 
 
 class Heightmap:
@@ -160,6 +173,8 @@ class JezeroEnv(gym.Env):
         and truncation both depend on it, so without it the reward isn't a
         function of the observation. On for every run from c0_control on; off
         (the default) reproduces the observation older checkpoints were trained on.
+    proprio: append proprioception (PROPRIO_LAYOUT): wheel speeds, slip,
+        roll/pitch rates, steering and bogie angles, time since last progress.
     rock_patch: append a 9x9 patch at 0.4 m of terrain heights (relative to the
         rover). On rock worlds the heightmap includes the rocks, so this is how
         the policy sees rocks the 1 m patch misses.
@@ -171,10 +186,12 @@ class JezeroEnv(gym.Env):
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
                  clock_obs: bool = False, goal_bonus: str = 'decay', holdout=None,
+                 proprio: bool = False,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
-        self.sim = JezeroSim(world, step_size=step_size, camera=camera)
+        self.sim = JezeroSim(world, step_size=step_size, camera=camera, report_joints=proprio)
+        self.proprio = proprio
         self.waypoints = self.sim.meta.get('waypoints')
         if not self.waypoints or len(self.waypoints) < 2:
             raise ValueError(f'world {world!r} has no waypoint list in its .yaml')
@@ -196,7 +213,8 @@ class JezeroEnv(gym.Env):
         self.physics_steps = int(round(CONTROL_PERIOD / step_size))
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        size = OBS_SIZE + (1 if clock_obs else 0) + (FINE_PATCH * FINE_PATCH if rock_patch else 0)
+        size = (OBS_SIZE + (1 if clock_obs else 0) + (PROPRIO_SIZE if proprio else 0)
+                + (FINE_PATCH * FINE_PATCH if rock_patch else 0))
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(size,), dtype=np.float32)
 
         g = np.arange(PATCH) - (PATCH - 1) / 2
@@ -305,6 +323,13 @@ class JezeroEnv(gym.Env):
         parts = []
         if self.clock_obs:
             parts.append([1.0 - self.steps / self.budget])
+        if self.proprio:
+            wheel = [w * SIM_WHEEL_RADIUS for w in s.wheel_vel]
+            roll_rate = c * s.wx + si * s.wy          # world -> heading frame (small tilt)
+            pitch_rate = -si * s.wx + c * s.wy
+            parts.append(wheel + [sum(wheel) / len(wheel) - v_fwd, roll_rate, pitch_rate]
+                         + list(s.corner_pos) + list(s.bogie_pos)
+                         + [min(self._since_progress, NO_PROGRESS_SCALE) / NO_PROGRESS_SCALE])
         if self.rock_patch:
             fx = s.x + c * self._fine_fwd - si * self._fine_left
             fy = s.y + si * self._fine_fwd + c * self._fine_left
@@ -363,6 +388,8 @@ class JezeroEnv(gym.Env):
                     'start_dist_m': math.hypot(self.goal[0] - s.x, self.goal[1] - s.y)}
         self._prev_action = np.zeros(2)
         self._prev_dist = self._goal_dist(s)
+        self._best_dist = self._prev_dist
+        self._since_progress = 0.0
         return self._obs(s), {'segment': seg, 'goal': self.goal, 'budget': self.budget,
                               'distance': self._prev_dist, 'spawn_attempts': self.spawn_attempts,
                               'settle_time': self.sim.settle_time}
@@ -378,6 +405,10 @@ class JezeroEnv(gym.Env):
         # Reward as named components (summed below), so each term's share can be
         # logged per episode and a change to one term measured on its own.
         parts = {'progress': PROGRESS_GAIN * (self._prev_dist - dist), 'time': -TIME_COST}
+        if dist < self._best_dist - PROGRESS_STEP:
+            self._best_dist, self._since_progress = dist, 0.0
+        else:
+            self._since_progress += CONTROL_PERIOD
         self._prev_dist = dist
         terminated, event = False, None
         if self._at_destination(s):

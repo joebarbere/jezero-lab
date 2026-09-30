@@ -55,6 +55,7 @@ CORNERS = (  # (joint, CornerCommand field, sign)
     ('front_wheel_joint_R', 'right_front_pos', -1.0),
     ('rear_wheel_joint_R', 'right_back_pos', -1.0),
 )
+BOGIES = ('rocker_bogie_joint_L_2', 'rocker_bogie_joint_R_2')
 # Corner servo: proportional position control, as a velocity command each step.
 CORNER_KP = 10.0        # 1/s
 CORNER_MAX_VEL = 3.0    # rad/s
@@ -107,6 +108,10 @@ class RoverState:
     wy: float
     wz: float
     sim_time: float
+    # Joint states, only filled with JezeroSim(report_joints=True):
+    wheel_vel: tuple = ()     # rad/s, WHEELS order; + is forward on every wheel
+    corner_pos: tuple = ()    # rad, CORNERS order (Gazebo joint frame)
+    bogie_pos: tuple = ()     # rad, BOGIES order
 
 
 _instances = itertools.count()
@@ -120,11 +125,13 @@ class JezeroSim:
     spawn: (x, y, z, yaw) override; defaults to the world's .yaml spawn pose.
     camera: add the chase camera (topic /chase_cam) and the Sensors system, for
         recordings. Rendering needs a display (see eval/record.py).
+    report_joints: fill RoverState's wheel velocities and corner and bogie angles
+        (proprioception). Off, nothing about the lookups changes.
     """
 
     def __init__(self, world: str = 'jezero_delta', step_size: float = 0.005,
                  spawn: tuple | None = None, collision: str = 'primitive',
-                 wheel_mu: float = 0.7, camera: bool = False):
+                 wheel_mu: float = 0.7, camera: bool = False, report_joints: bool = False):
         self.step_size = step_size
         self.kin = rover_kinematics()
         # gz-transport is host-wide: two sims (in one process, or across a
@@ -135,6 +142,7 @@ class JezeroSim:
         os.environ['GZ_PARTITION'] = self.partition
         self._tmp = tempfile.mkdtemp(prefix='jezero_env_')
         self.camera = camera
+        self.report_joints = report_joints
         build_rover_model(self._tmp, collision=collision, wheel_mu=wheel_mu, camera=camera)
 
         world_path = world if os.sep in world else os.path.join(OSR_GZ, 'worlds', world + '.sdf')
@@ -208,6 +216,11 @@ class JezeroSim:
             joint.enable_position_check(ecm, True)
             joint.enable_velocity_check(ecm, True)
             self._joints[name] = joint
+        if self.report_joints:
+            for name in BOGIES:
+                joint = Joint(model.joint_by_name(ecm, name))
+                joint.enable_position_check(ecm, True)
+                self._joints[name] = joint
         self._link = Link(model.link_by_name(ecm, 'base_footprint'))
         self._link.enable_velocity_checks(ecm, True)
         return True
@@ -239,7 +252,16 @@ class JezeroSim:
             vx=vel.x() if vel else 0.0, vy=vel.y() if vel else 0.0, vz=vel.z() if vel else 0.0,
             wx=ang.x() if ang else 0.0, wy=ang.y() if ang else 0.0,
             wz=ang.z() if ang else 0.0,
-            sim_time=info.sim_time.total_seconds())
+            sim_time=info.sim_time.total_seconds(),
+            **(self._joint_states(ecm) if self.report_joints else {}))
+
+    def _joint_states(self, ecm):
+        def first(v):
+            return v[0] if v else 0.0
+        j = self._joints
+        return {'wheel_vel': tuple(first(j[n].velocity(ecm)) for n, _, _ in WHEELS),
+                'corner_pos': tuple(first(j[n].position(ecm)) for n, _, _ in CORNERS),
+                'bogie_pos': tuple(first(j[n].position(ecm)) for n in BOGIES)}
 
     # -- public API ---------------------------------------------------------
 

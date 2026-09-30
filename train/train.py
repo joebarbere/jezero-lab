@@ -149,6 +149,8 @@ def main():
     ap.add_argument('--goal-mode', default='segments', choices=['segments', 'route', 'map'])
     ap.add_argument('--goal-bonus', default='decay', choices=['decay', 'constant'],
                     help='decay: bonus shrinks with the budget used; constant: full bonus')
+    ap.add_argument('--proprio', action='store_true',
+                    help='observe proprioception (wheel speeds, slip, rates, joint angles, no-progress time)')
     ap.add_argument('--clock-obs', action='store_true',
                     help='observe the fraction of the step budget remaining (all runs from c0_control)')
     ap.add_argument('--rock-patch', action='store_true',
@@ -163,7 +165,8 @@ def main():
     env_kwargs = dict(world=args.world, segments=tuple(args.segments),
                       random_heading=args.random_heading, spawn_jitter=args.spawn_jitter,
                       goal_mode=args.goal_mode, rock_patch=args.rock_patch,
-                      clock_obs=args.clock_obs, goal_bonus=args.goal_bonus)
+                      clock_obs=args.clock_obs, goal_bonus=args.goal_bonus,
+                      proprio=args.proprio)
     config = {**vars(args), 'env_kwargs': env_kwargs, 'git_revision': git_revision()}
     with open(os.path.join(out, 'config.json'), 'w') as f:
         json.dump(config, f, indent=2)
