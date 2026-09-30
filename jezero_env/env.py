@@ -62,6 +62,9 @@ GOAL_BONUS = 100.0
 TIME_COST = 0.01
 TIP_PENALTY = 50.0
 STUCK_SPEED = 0.02     # m/s: below this a step counts toward stuck_s (diagnostics only)
+STUCK_PENALTY = 50.0   # stuck_limit_s: same as tipping over. Must exceed the time cost a
+                       # stall would otherwise accrue (<= ~40), or getting stuck on purpose
+                       # would be a cheap way out of an episode.
 OUT_PENALTY = 50.0
 
 PATCH = 7              # terrain samples per side
@@ -184,6 +187,9 @@ class JezeroEnv(gym.Env):
         roll/pitch rates, steering and bogie angles, time since last progress.
     lookahead: append terrain height profiles out to 12 m along rays around the
         goal bearing (LOOKAHEAD_*): scarps and rocks before the rover reaches them.
+    stuck_limit_s: training-only shaping. End the episode with -STUCK_PENALTY
+        when the goal distance hasn't improved by PROGRESS_STEP for this long.
+        Evaluation leaves it off (eval builds envs from observation options only).
     rock_patch: append a 9x9 patch at 0.4 m of terrain heights (relative to the
         rover). On rock worlds the heightmap includes the rocks, so this is how
         the policy sees rocks the 1 m patch misses.
@@ -195,13 +201,14 @@ class JezeroEnv(gym.Env):
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
                  clock_obs: bool = False, goal_bonus: str = 'decay', holdout=None,
-                 proprio: bool = False, lookahead: bool = False,
+                 proprio: bool = False, lookahead: bool = False, stuck_limit_s=None,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
         self.sim = JezeroSim(world, step_size=step_size, camera=camera, report_joints=proprio)
         self.proprio = proprio
         self.lookahead = lookahead
+        self.stuck_limit_s = stuck_limit_s
         self.waypoints = self.sim.meta.get('waypoints')
         if not self.waypoints or len(self.waypoints) < 2:
             raise ValueError(f'world {world!r} has no waypoint list in its .yaml')
@@ -438,6 +445,9 @@ class JezeroEnv(gym.Env):
         elif not self.heightmap.inside(s.x, s.y, margin=1.0):
             parts['out_of_bounds'] = -OUT_PENALTY
             terminated, event = True, 'out_of_bounds'
+        elif self.stuck_limit_s is not None and self._since_progress >= self.stuck_limit_s:
+            parts['stuck'] = -STUCK_PENALTY
+            terminated, event = True, 'stuck'
         truncated = not terminated and self.steps >= self.budget
         if truncated:
             event = 'budget'

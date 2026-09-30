@@ -66,8 +66,8 @@ class EpisodeLogger(BaseCallback):
     - The run's git revision and config as TensorBoard text.
     """
 
-    OUTCOMES = ('goal', 'tipped', 'budget', 'out_of_bounds')
-    REWARD_PARTS = ('progress', 'time', 'goal', 'tipped', 'out_of_bounds')
+    OUTCOMES = ('goal', 'tipped', 'budget', 'out_of_bounds', 'stuck')
+    REWARD_PARTS = ('progress', 'time', 'goal', 'tipped', 'out_of_bounds', 'stuck')
 
     def __init__(self, out_dir, config, window=100):
         super().__init__()
@@ -123,7 +123,7 @@ class EpisodeLogger(BaseCallback):
 CSV_FIELDS = ('event', 'segment', 'start_dist_m', 'final_dist_m', 'progress_frac', 'min_dist_m',
               'steps', 'sim_time_s', 'stuck_s', 'max_tilt_deg', 'path_m', 'steer_change_per_s',
               'end_x', 'end_y', 'reward_progress', 'reward_time', 'reward_goal', 'reward_tipped',
-              'reward_out_of_bounds')
+              'reward_out_of_bounds', 'reward_stuck')
 
 
 class NormalizedCheckpoint(CheckpointCallback):
@@ -153,6 +153,8 @@ def main():
                     help='observe proprioception (wheel speeds, slip, rates, joint angles, no-progress time)')
     ap.add_argument('--lookahead', action='store_true',
                     help='observe terrain profiles out to 12 m along rays around the goal bearing')
+    ap.add_argument('--stuck-limit', type=float, default=None, metavar='SECONDS',
+                    help='training-only: end with a penalty after this long without progress')
     ap.add_argument('--clock-obs', action='store_true',
                     help='observe the fraction of the step budget remaining (all runs from c0_control)')
     ap.add_argument('--rock-patch', action='store_true',
@@ -168,7 +170,8 @@ def main():
                       random_heading=args.random_heading, spawn_jitter=args.spawn_jitter,
                       goal_mode=args.goal_mode, rock_patch=args.rock_patch,
                       clock_obs=args.clock_obs, goal_bonus=args.goal_bonus,
-                      proprio=args.proprio, lookahead=args.lookahead)
+                      proprio=args.proprio, lookahead=args.lookahead,
+                      stuck_limit_s=args.stuck_limit)
     config = {**vars(args), 'env_kwargs': env_kwargs, 'git_revision': git_revision()}
     with open(os.path.join(out, 'config.json'), 'w') as f:
         json.dump(config, f, indent=2)

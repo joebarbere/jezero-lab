@@ -642,7 +642,8 @@ added (cheap).
 | 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
 | 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | done: **no measurable gain** (hard 52% = 52%, unseen 67% vs 73%); not adopted at 400k |
 | 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | done: **worse at 400k** (hard 25% vs 52%, unseen 38% vs 73%); learns slower. Not adopted; see screening bias |
-| 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
+| 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | running |
+| 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
