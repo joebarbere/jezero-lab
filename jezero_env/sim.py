@@ -158,9 +158,7 @@ class JezeroSim:
         self._state = None
         self._node = Node()
         self._rover_present = False   # updated every step
-        self._resetting = False       # no joint lookup/commands while the old rover goes
-        self._iteration = 0           # physics iteration of the last post-update
-        self._created_iter = None     # iteration at which the current rover appeared
+        self._resetting = False       # no joint lookup/commands while swapping models
 
         self.fixture = TestFixture(self._world_file)
         self.fixture.on_pre_update(self._pre_update)
@@ -228,11 +226,8 @@ class JezeroSim:
             self._joints[name].set_velocity(ecm, [vel])
 
     def _post_update(self, info, ecm):
-        present = Model(World(world_entity(ecm)).model_by_name(ecm, 'rover')).valid(ecm)
-        if present and not self._rover_present:
-            self._created_iter = info.iterations
-        self._rover_present = present
-        self._iteration = info.iterations
+        self._rover_present = Model(
+            World(world_entity(ecm)).model_by_name(ecm, 'rover')).valid(ecm)
         if self._resetting or self._link is None or not self._joints:
             return
         pose = self._link.world_pose(ecm)
@@ -301,7 +296,12 @@ class JezeroSim:
         - Teleporting and zeroing joints leaves the body's momentum (a rover
           reset mid-spin keeps spinning), and Link velocity commands persist
           every step, pinning the body in place.
-        A new model starts from exactly the same state every time.
+        A new model starts from the same state every time, to within
+        micrometres: the creation lands at a varying point in the background
+        service window. A variant that counted the settle schedule from the
+        creation iteration made seeded resets bit-exact, but trained less
+        reliably (1 of 4 seeds learned vs 4 of 4 with this one; see PLAN.md,
+        "Seed variance"), so this is the version kept.
         Sim time keeps running; track episode time from the returned state.
         """
         if spawn is not None:
@@ -311,10 +311,6 @@ class JezeroSim:
         self._joints = self._link = self._state = None
         self._service('remove', Entity(name='rover', type=Entity.MODEL), Entity)
         self._step_until(present=False)
-        # From here the pre-update hook picks up the new rover's joints on the
-        # first iteration it exists and holds them at zero, so nothing depends
-        # on when inside the service window the creation lands.
-        self._resetting = False
         factory = EntityFactory(sdf_filename=os.path.join(self._tmp, 'osr_rover', 'model.sdf'),
                                 name='rover', allow_renaming=False)
         x, y, z, yaw = self.spawn
@@ -322,27 +318,23 @@ class JezeroSim:
         factory.pose.orientation.z, factory.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
         self._service('create', factory, EntityFactory)
         self._step_until(present=True)
+        self._resetting = False
+        self._created_at = self._state_time()
         return self._settle(settle_max_s)
 
+    def _state_time(self):
+        return self.step(1).sim_time
+
     def _settle(self, max_s: float, chunk_s: float = 0.1, calm_chunks: int = 5,
-                v_tol: float = 0.01, w_tol: float = 0.02, min_s: float = 0.5) -> RoverState:
+                v_tol: float = 0.01, w_tol: float = 0.02) -> RoverState:
         """Step until the body is still: speed < v_tol m/s and angular speed
         < w_tol rad/s for `calm_chunks` consecutive chunks. With fixed rockers
         the body pivots on the undamped bogie joints, and at Mars gravity that
         swing is slow: a fixed 1 s settle left it at 40-46 deg pitch, which the
-        env then scored as tipping over on step 1.
-
-        The schedule counts physics iterations from the rover's creation, not
-        from whenever this is called: the creation lands at a varying point in
-        the background service window, and on a slope the rover creeps, so a
-        schedule relative to the call made seeded resets differ slightly."""
+        env then scored as tipping over on step 1."""
         n = max(1, int(round(chunk_s / self.step_size)))
-        start = self._created_iter + max(1, int(round(min_s / self.step_size)))
-        if self._iteration > start:
-            raise RuntimeError('settle schedule start passed during the create window; '
-                               'raise min_s')
-        s = self.step(start - self._iteration) if start > self._iteration else self._state
         calm = 0
+        s = self.step(n)
         for _ in range(int(max_s / chunk_s)):
             still = (math.sqrt(s.vx ** 2 + s.vy ** 2 + s.vz ** 2) < v_tol
                      and math.sqrt(s.wx ** 2 + s.wy ** 2 + s.wz ** 2) < w_tol)
@@ -350,5 +342,5 @@ class JezeroSim:
             if calm >= calm_chunks:
                 break
             s = self.step(n)
-        self.settle_time = (self._iteration - self._created_iter) * self.step_size
+        self.settle_time = s.sim_time - self._created_at
         return s

@@ -635,7 +635,8 @@ added (cheap).
 |---|---|---|---|
 | 0 | `c0_control` | `ppo_rocks` setup + `clock_obs`, 1.5M | **invalid as a control**: also had goal clearance 1.0 m (see below) |
 | 0b | `c0b_control` | `ppo_rocks` setup + `clock_obs`, goal clearance back to 1.5 m, 1.5M | done: **fails like c0** (training goal 7–15%, held-out 0%) |
-| 0c | `c0c_control` | exactly the `ppo_rocks` setup on the current code, **no clock** | running: clock vs seed variance |
+| 0c | `c0c_control` | exactly the `ppo_rocks` setup on the current code, **no clock** | done: fails too (training goal 9–18%). See "Seed variance" |
+| 0d | `clock_s0/s1/s2` | 3-seed screen (400k): clock on, vs the no-clock seeds already run | running |
 | 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
@@ -672,6 +673,45 @@ code, evaluated on the current code, still work (1.1M: hard 50%, unseen 17%;
 the clock observation itself, or run-to-run variance (the reset fix changes every
 trajectory, so c0b is effectively another seed). `c0c` (no clock, current code)
 separates them. If it fails too, results need several seeds per experiment.
+
+### Seed variance, and the reset that trained less reliably (2026-09-30)
+
+`c0c` (no clock) failed like `c0b`, so the clock wasn't it. Chasing the cause:
+
+- **Not the environment**: `ppo_rocks` checkpoints still drive on the current code.
+- **Not evaluator cross-talk**: gz-transport requests reach another process in the
+  same container but not another container (tested directly, with a positive
+  control).
+- **Rerunning `ppo_rocks`'s own commit (4605519) learned again** (`c0d_oldcode`:
+  81–91% training goal rate at 1.1–1.5M). Bisecting: current code with only
+  `sim.py` rolled back to 4605519 learned, identically to 4605519 itself, digit
+  for digit. The difference was the reset rewrite from `b8a770a` (settle
+  schedule counted from the creation iteration, joints held from creation).
+- But that rewrite doesn't change anything physical: velocities, corner angles,
+  post-reset poses are the same, except the rest pose differs by ~3 µm. In a
+  chaotic training loop that's enough to send a whole run elsewhere, so it's
+  effectively a different seed.
+- **Seeds, at 400k steps (training goal rate):**
+
+  | Seed | Old reset | New reset |
+  |---|---|---|
+  | 0 | 69% | 8% |
+  | 1 | **92%** | fail (`c0e`) |
+  | 2 | 75% | **87%** |
+  | `ppo_rocks` / `c0c` (6 envs) | learned | fail |
+
+**Conclusions.**
+1. **Seed variance is huge**: the same code gets 8% or 87%. Every single-run
+   comparison made before this point is weak evidence, including `ppo_v1` vs
+   `ppo_rocks` and the c0 series.
+2. The old reset was more reliable (4/4 vs 1/4; ~5% odds if equal, no mechanism
+   found). Reverted to it: training with it reproduces the old runs exactly, and
+   `check_env` passes on the boulder world. Kept from the rewrite era: the camera
+   option and exact episode time in `info`. Given up: bit-exact seeded resets
+   after *different* histories (they differ by micrometres).
+3. **Method from here: ≥ 3 seeds per setting**, 400k-step screening runs (curves
+   separate by ~350k), full-length runs only for settings that survive
+   screening; report the spread, not one run.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
