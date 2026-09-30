@@ -638,6 +638,7 @@ added (cheap).
 | 0c | `c0c_control` | exactly the `ppo_rocks` setup on the current code, **no clock** | done: fails too (training goal 9–18%). See "Seed variance" |
 | 0d | `clock_s0/s1/s2` | 3-seed screen (400k): clock on, vs the no-clock seeds already run | done: **clock hurts** (6/13/16% vs 69/92/75%); off |
 | – | control | no clock, original reset, `ppo_rocks` setup: learns on 3/3 seeds (69–92% at 400k) | **established** |
+| 0e | `bonusc_s0/s1/s2` | constant goal bonus instead of the decaying one | done: **no better** (70/92/13% vs 68/90/73%); not adopted |
 | 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
@@ -726,6 +727,18 @@ the runs' symptom of stalling ~6 m short. `clock_obs` stays in the code, off by
 default. The principled alternative is to remove the time dependence from the
 reward instead: a constant goal bonus (the per-step time cost still rewards
 finishing sooner), no clock needed.
+
+### A constant goal bonus doesn't help (2026-09-30)
+
+Training goal rate over 300–400k steps (and goal speed), constant bonus vs the
+control: seed 0 70% (0.233 m/s) vs 68% (0.222); seed 1 92% (0.256) vs 90%
+(0.248); **seed 2 13% vs 73%**. Two seeds match the control (slightly faster: the
+fear that without a decaying bonus the policy would dawdle didn't materialise);
+one failed. With seed variance this large that may be luck, but there's no
+evidence of improvement, so it isn't adopted. In practice the hidden clock in the
+decaying bonus doesn't hurt, and both fixes (observe it; remove it) were no
+better or worse. **Baseline from here: the control** (decaying bonus, no clock,
+original reset).
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
