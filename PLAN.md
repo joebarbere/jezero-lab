@@ -639,7 +639,7 @@ added (cheap).
 | 0d | `clock_s0/s1/s2` | 3-seed screen (400k): clock on, vs the no-clock seeds already run | done: **clock hurts** (6/13/16% vs 69/92/75%); off |
 | – | control | no clock, original reset, `ppo_rocks` setup: learns on 3/3 seeds (69–92% at 400k) | **established** |
 | 0e | `bonusc_s0/s1/s2` | constant goal bonus instead of the decaying one | done: **no better** (70/92/13% vs 68/90/73%); not adopted |
-| 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
+| 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
 | 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
@@ -739,6 +739,30 @@ evidence of improvement, so it isn't adopted. In practice the hidden clock in th
 decaying bonus doesn't hurt, and both fixes (observe it; remove it) were no
 better or worse. **Baseline from here: the control** (decaying bonus, no clock,
 original reset).
+
+### Experiment 1: varied worlds generalise (2026-09-30)
+
+Same held-out spawns for everyone, 16 per variant per seed, 400k checkpoints,
+evaluated on `jezero_delta_rocks_k05_full` (`eval/compare.py`):
+
+| | hard goal (tipped) | unseen goal (tipped) |
+|---|---|---|
+| baseline | 62% (31%) | 81% (6%) |
+| control s0 / s1 / s2 | 44% / 50% / 12% | 31% / 56% / 50% |
+| **control mean (range)** | **35%** (12–50) | **46%** (31–56) |
+| exp1 s0 / s1 / s2 | 69% / 6% / **81%** | 62% / 69% / **88%** |
+| **exp1 mean (range)** | **52%** (6–81) | **73%** (62–88) |
+
+- **Unseen: a real improvement.** Every exp1 seed beats every control seed
+  (35/48 vs 22/48 successes). Training on start/goal pairs everywhere teaches
+  driving to a goal, not the route.
+- **Hard: better on average, not conclusive** (one exp1 seed tips 56% of the time).
+- **exp1 seed 2 is the first policy ahead of the baseline on both** (81 vs 62%,
+  88 vs 81%); promising at n = 16, not proven.
+- All 3 exp1 seeds learned (66–68% training goal rate on the harder map task).
+
+**New baseline:** `--world jezero_delta_rocks_k05_full --goal-mode map`, plus the
+control's settings. Experiments 2–5 build on it.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
