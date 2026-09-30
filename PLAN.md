@@ -641,7 +641,7 @@ added (cheap).
 | 0e | `bonusc_s0/s1/s2` | constant goal bonus instead of the decaying one | done: **no better** (70/92/13% vs 68/90/73%); not adopted |
 | 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
 | 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | done: **no measurable gain** (hard 52% = 52%, unseen 67% vs 73%); not adopted at 400k |
-| 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | running |
+| 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | done: **worse at 400k** (hard 25% vs 52%, unseen 38% vs 73%); learns slower. Not adopted; see screening bias |
 | 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
 
@@ -779,6 +779,25 @@ one seed tipped much less in training (8% vs 24%), but that didn't carry to the
 held-out spawns. Not adopted: it adds inputs (and hardware) with no measured gain.
 Caveat: 400k may be too short to learn to use 16 new inputs; worth a retry at
 full length if tip-overs and stalls persist in the final configuration.
+
+### Experiment 3: look-ahead, worse at 400k, and a screening bias (2026-09-30)
+
+| | hard goal (tipped) | unseen goal (tipped) |
+|---|---|---|
+| **exp1 mean (range)** | **52%** (6–81) | **73%** (62–88) |
+| exp3 s0 / s1 / s2 | 0 / 50 / 25% | 38 / 19 / 56% |
+| **exp3 mean (range)** | **25%** (0–50) | **38%** (19–56) |
+
+All three look-ahead seeds trail on unseen, the variant it targeted, and tip more.
+The training curves say *slower*, not *wrong*: 49–52% training goal rate at 400k vs
+66–68% for exp1. 40 more inputs (+30%) take a small MLP longer to use.
+
+**Screening bias:** a 400k screen penalises any change that adds inputs. That
+applies to experiment 2 too. Neither result means "these inputs don't help";
+both mean "not within 400k with a flat MLP". Reward changes (experiment 4) leave
+the observation alone and are fair to screen at 400k. Input changes need longer
+screens (~1M) or a model that handles them better (the terrain CNN,
+experiment 5).
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
