@@ -13,15 +13,16 @@ answer each other's gz-transport services.
     tensorboard --logdir runs    (or: podman run ... tensorboard --logdir runs --bind_all)
 """
 import argparse
+import csv
 import functools
 import json
 import os
 import time
-from collections import Counter
 
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
+from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 
 RUNS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'runs')
@@ -35,30 +36,94 @@ def make_env(rank, seed, env_kwargs):
     return env
 
 
-class OutcomeLogger(BaseCallback):
-    """Log how episodes end (goal / tipped / budget / out_of_bounds) and the
-    success rate over the last `window` episodes. Replaces the 2020 ELK dashboard."""
+def git_revision(repo=os.path.dirname(RUNS)):
+    """Commit of the repo, read from .git directly (the image has no git)."""
+    try:
+        head = open(os.path.join(repo, '.git', 'HEAD')).read().strip()
+        if not head.startswith('ref: '):
+            return head
+        ref = head[5:]
+        path = os.path.join(repo, '.git', ref)
+        if os.path.exists(path):
+            return open(path).read().strip()
+        for line in open(os.path.join(repo, '.git', 'packed-refs')):
+            if line.strip().endswith(ref):
+                return line.split()[0]
+    except OSError:
+        pass
+    return 'unknown'
 
-    def __init__(self, window=100):
+
+class EpisodeLogger(BaseCallback):
+    """Per-episode diagnostics from JezeroEnv (info['episode_stats']):
+
+    - TensorBoard, averaged over the last `window` episodes: outcome rates,
+      episode/* (progress, stuck time, tilt, path efficiency, steering churn...)
+      and reward/* (each reward component's per-episode sum, so a change to one
+      term can be measured on its own). Replaces the 2020 ELK dashboard.
+    - runs/<name>/episodes.csv: every episode, with where it ended, for failure
+      heatmaps (eval/heatmap.py).
+    - The run's git revision and config as TensorBoard text.
+    """
+
+    OUTCOMES = ('goal', 'tipped', 'budget', 'out_of_bounds')
+    REWARD_PARTS = ('progress', 'time', 'goal', 'tipped', 'out_of_bounds')
+
+    def __init__(self, out_dir, config, window=100):
         super().__init__()
         self.window = window
         self.recent = []
-        self.totals = Counter()
+        self.episodes = 0
+        self.csv_path = os.path.join(out_dir, 'episodes.csv')
+        self.config = config
+        self._csv = None
+
+    def _on_training_start(self):
+        for fmt in self.logger.output_formats:
+            if isinstance(fmt, TensorBoardOutputFormat):
+                fmt.writer.add_text('run/git_revision', self.config['git_revision'], 0)
+                fmt.writer.add_text('run/config', '```\n' + json.dumps(self.config, indent=2) + '\n```', 0)
+                fmt.writer.flush()
+        new = not os.path.exists(self.csv_path)
+        self._csv = open(self.csv_path, 'a', newline='')
+        self._writer = csv.writer(self._csv)
+        if new:
+            self._writer.writerow(['timesteps', *CSV_FIELDS])
 
     def _on_step(self):
         for info in self.locals['infos']:
-            ep = info.get('episode')
-            if ep is None:
+            st = info.get('episode_stats')
+            if st is None:
                 continue
-            event = info.get('event') or 'unknown'
-            self.recent = (self.recent + [event])[-self.window:]
-            self.totals[event] += 1
+            self.episodes += 1
+            self.recent = (self.recent + [st])[-self.window:]
+            self._writer.writerow([self.num_timesteps, *(st.get(f, 0.0) for f in CSV_FIELDS)])
         if self.recent and self.n_calls % 50 == 0:
-            counts = Counter(self.recent)
-            for event in ('goal', 'tipped', 'budget', 'out_of_bounds'):
-                self.logger.record(f'outcome/{event}_rate', counts[event] / len(self.recent))
-            self.logger.record('outcome/episodes', sum(self.totals.values()))
+            rs = self.recent
+            n = len(rs)
+            for ev in self.OUTCOMES:
+                self.logger.record(f'outcome/{ev}_rate', sum(r['event'] == ev for r in rs) / n)
+            self.logger.record('outcome/episodes', self.episodes)
+            for part in self.REWARD_PARTS:
+                self.logger.record(f'reward/{part}', sum(r.get('reward_' + part, 0.0) for r in rs) / n)
+            for key in ('progress_frac', 'final_dist_m', 'min_dist_m', 'stuck_s', 'max_tilt_deg',
+                        'path_m', 'steer_change_per_s', 'sim_time_s'):
+                self.logger.record(f'episode/{key}', sum(r[key] for r in rs) / n)
+            eff = [r['path_efficiency'] for r in rs if r['event'] == 'goal']
+            if eff:
+                self.logger.record('episode/path_efficiency_goal', sum(eff) / len(eff))
+            self._csv.flush()
         return True
+
+    def _on_training_end(self):
+        if self._csv:
+            self._csv.close()
+
+
+CSV_FIELDS = ('event', 'segment', 'start_dist_m', 'final_dist_m', 'progress_frac', 'min_dist_m',
+              'steps', 'sim_time_s', 'stuck_s', 'max_tilt_deg', 'path_m', 'steer_change_per_s',
+              'end_x', 'end_y', 'reward_progress', 'reward_time', 'reward_goal', 'reward_tipped',
+              'reward_out_of_bounds')
 
 
 class NormalizedCheckpoint(CheckpointCallback):
@@ -94,8 +159,9 @@ def main():
     env_kwargs = dict(world=args.world, segments=tuple(args.segments),
                       random_heading=args.random_heading, spawn_jitter=args.spawn_jitter,
                       goal_mode=args.goal_mode, rock_patch=args.rock_patch)
+    config = {**vars(args), 'env_kwargs': env_kwargs, 'git_revision': git_revision()}
     with open(os.path.join(out, 'config.json'), 'w') as f:
-        json.dump({**vars(args), 'env_kwargs': env_kwargs}, f, indent=2)
+        json.dump(config, f, indent=2)
 
     venv = SubprocVecEnv([functools.partial(make_env, i, args.seed * 1000, env_kwargs)
                           for i in range(args.envs)], start_method='spawn')
@@ -116,7 +182,7 @@ def main():
         )
 
     callbacks = CallbackList([
-        OutcomeLogger(),
+        EpisodeLogger(out, config),
         NormalizedCheckpoint(save_freq=max(1, 100_000 // args.envs), save_path=os.path.join(out, 'checkpoints'),
                              name_prefix='ppo'),
     ])

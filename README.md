@@ -119,7 +119,28 @@ eval/make_demo.sh runs/ppo_rocks/final.zip runs/eval.json hard:5 unseen:0   # ne
 ```
 
 `train.train` writes TensorBoard logs and checkpoints to `runs/<name>/`
-(`python3 tools/tb_summary.py runs/<name>` prints the curves). `eval.evaluate`
+(`python3 tools/tb_summary.py runs/<name>` prints the curves).
+
+### Observability
+
+- **TensorBoard** (`runs/` holds every run; never delete one, name a new one):
+  ```bash
+  podman run -d --name jz-tensorboard -p 127.0.0.1:6006:6006 -v "$PWD/runs:/runs:ro,z" \
+      jezero-lab:jazzy-harmonic tensorboard --logdir /runs --bind_all --reload_interval 30
+  ```
+  Training logs `outcome/*` (goal / tipped / budget / out-of-bounds rates),
+  `reward/*` (each reward component's per-episode sum, so a change to one term is
+  measurable on its own) and `episode/*` (progress fraction, closest approach,
+  stuck time, peak tilt, path efficiency, steering churn), over the last 100
+  episodes; plus the run's git revision and config as text.
+- **Held-out evaluation during training**: `eval.watch runs/<name> --follow`
+  evaluates each checkpoint on the held-out *hard* and *unseen* spawns in spare
+  processes and logs them as the run `<name>/eval`, with the baseline's score on
+  the same spawns as a reference line. Without `--follow` it backfills an existing
+  run (`--every 400000`).
+- **Where episodes end**: every episode goes to `runs/<name>/episodes.csv`;
+  `eval.heatmap runs/<name> --from-steps 1000000` plots end points by outcome over
+  the terrain. `eval.evaluate`
 runs the policy and the baseline on identical held-out spawns; `eval.plot_paths`
 draws both paths per spawn; `eval/make_demo.sh` records side-by-side chase-camera
 videos (rendered on the host GPU, so it runs the containers with the display).

@@ -55,6 +55,7 @@ PROGRESS_GAIN = 1.0
 GOAL_BONUS = 100.0
 TIME_COST = 0.01
 TIP_PENALTY = 50.0
+STUCK_SPEED = 0.02     # m/s: below this a step counts toward stuck_s (diagnostics only)
 OUT_PENALTY = 50.0
 
 PATCH = 7              # terrain samples per side
@@ -221,6 +222,20 @@ class JezeroEnv(gym.Env):
                 return x, y
         return start['x'], start['y']
 
+    def _episode_stats(self, ep, event, dist, s):
+        """Summary of a finished episode, for logging (see train/train.py)."""
+        start = ep['start_dist_m']
+        stats = {k: v for k, v in ep.items() if not k.startswith('_')}
+        stats.update(
+            event=event, steps=self.steps, sim_time_s=self.steps * CONTROL_PERIOD,
+            final_dist_m=dist,
+            progress_frac=(start - dist) / start if start > 0 else 0.0,
+            # straight-line distance / distance driven, for episodes that got there
+            path_efficiency=(start / ep['path_m']) if event == 'goal' and ep['path_m'] > 0 else float('nan'),
+            steer_change_per_s=ep['steer_change'] / max(self.steps * CONTROL_PERIOD, 1e-9),
+            end_x=s.x, end_y=s.y, segment=self.segment)
+        return stats
+
     def _at_destination(self, s):
         return abs(s.x - self.goal[0]) <= GOAL_PADDING and abs(s.y - self.goal[1]) <= GOAL_PADDING
 
@@ -290,6 +305,9 @@ class JezeroEnv(gym.Env):
             self.budget = min(self.budget, int(self.max_episode_seconds / CONTROL_PERIOD))
         self.steps = 0
         self.t0 = s.sim_time
+        self._ep = {'stuck_s': 0.0, 'path_m': 0.0, 'max_tilt_deg': 0.0, 'min_dist_m': math.inf,
+                    'steer_change': 0.0, '_x': s.x, '_y': s.y, '_turn': 0.0,
+                    'start_dist_m': math.hypot(self.goal[0] - s.x, self.goal[1] - s.y)}
         self._prev_action = np.zeros(2)
         self._prev_dist = self._goal_dist(s)
         return self._obs(s), {'segment': seg, 'goal': self.goal, 'budget': self.budget,
@@ -304,22 +322,40 @@ class JezeroEnv(gym.Env):
         self._prev_action = a
 
         dist = self._goal_dist(s)
-        reward = PROGRESS_GAIN * (self._prev_dist - dist) - TIME_COST
+        # Reward as named components (summed below), so each term's share can be
+        # logged per episode and a change to one term measured on its own.
+        parts = {'progress': PROGRESS_GAIN * (self._prev_dist - dist), 'time': -TIME_COST}
         self._prev_dist = dist
         terminated, event = False, None
         if self._at_destination(s):
-            reward += GOAL_BONUS * (1.0 - self.steps / self.budget)
+            parts['goal'] = GOAL_BONUS * (1.0 - self.steps / self.budget)
             terminated, event = True, 'goal'
         elif abs(s.roll) > MAX_TILT or abs(s.pitch) > MAX_TILT:
-            reward -= TIP_PENALTY
+            parts['tipped'] = -TIP_PENALTY
             terminated, event = True, 'tipped'
         elif not self.heightmap.inside(s.x, s.y, margin=1.0):
-            reward -= OUT_PENALTY
+            parts['out_of_bounds'] = -OUT_PENALTY
             terminated, event = True, 'out_of_bounds'
         truncated = not terminated and self.steps >= self.budget
         if truncated:
             event = 'budget'
+        reward = sum(parts.values())
+
+        # Episode diagnostics.
+        ep = self._ep
+        for k, v in parts.items():
+            ep['reward_' + k] = ep.get('reward_' + k, 0.0) + v
+        speed = math.hypot(s.vx, s.vy)
+        ep['stuck_s'] += CONTROL_PERIOD if speed < STUCK_SPEED else 0.0
+        ep['path_m'] += math.hypot(s.x - ep['_x'], s.y - ep['_y'])
+        ep['_x'], ep['_y'] = s.x, s.y
+        ep['max_tilt_deg'] = max(ep['max_tilt_deg'], math.degrees(max(abs(s.roll), abs(s.pitch))))
+        ep['min_dist_m'] = min(ep['min_dist_m'], dist)
+        ep['steer_change'] += abs(a[1] - ep['_turn'])
+        ep['_turn'] = a[1]
 
         info = {'distance': dist, 'event': event, 'sim_time': s.sim_time - self.t0,
                 'x': s.x, 'y': s.y}
+        if terminated or truncated:
+            info['episode_stats'] = self._episode_stats(ep, event, dist, s)
         return self._obs(s), float(reward), terminated, truncated, info

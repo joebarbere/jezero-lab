@@ -566,6 +566,36 @@ was misnamed so bumper termination never fired.
 Nobody randomised starts or goals, or tested generalisation at all: every agent saw
 one fixed route. Nothing there addresses our biggest failure.
 
+### Observability for model work (2026-09-29)
+
+Added before changing the reward, so each change can be measured: per-episode
+reward components, stuck time, peak tilt, progress and path efficiency in
+TensorBoard; `episodes.csv` + `eval/heatmap.py` for where episodes end; git
+revision and config per run; and `eval/watch.py`, which evaluates every
+checkpoint on held-out spawns (alongside training or as a backfill) and logs it
+next to the training curves with the baseline as a reference line.
+
+**The backfill changed the picture** (8 spawns per point, so ±1 episode = 12.5
+points; read the shape, not single values):
+
+| Checkpoint | ppo_v1 hard / unseen | ppo_rocks hard / unseen (tipped) |
+|---|---|---|
+| 100k | 62% / 0% | 0% / 0% |
+| 400k–600k | 75% / 25% | 25% / 25% (50% / 75%) |
+| 700k | **100% / 62%** | – |
+| 1.0–1.1M | 88% / 38% | 38% / **38%** (38% / 50%) |
+| 1.6M | – | **50%** / 25% |
+| 2.1M | – | **50%** / 12% |
+| 2.6M | – | **0%** / 25% (75% / 50%) |
+| Baseline, same spawns | 100% / 100% | 38% / 75% |
+
+Held-out performance **peaks mid-training and then falls**: unseen at 700k for
+`ppo_v1`, ~1.1M for `ppo_rocks`, the signature of memorising the training ground.
+Evaluating only the last checkpoint understated both runs, and `ppo_rocks` is
+unstable late (hard 50% → 0% with 75% tip-overs at 2.6M). So: select
+checkpoints by held-out score, consider a decaying learning rate, and use 16–24
+spawns for any decision.
+
 ### Next steps, if picked up again
 
 1. Start and goal pairs across the whole map, not just along the route, with a

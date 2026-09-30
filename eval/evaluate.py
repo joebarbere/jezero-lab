@@ -33,6 +33,32 @@ _env = None
 _policy = None
 
 
+def load_policy(model_path):
+    """obs -> action for an SB3 PPO checkpoint and its VecNormalize stats."""
+    from stable_baselines3 import PPO
+    model = PPO.load(model_path, device='cpu')
+    with open(_vecnormalize_path(model_path), 'rb') as f:
+        norm = pickle.load(f)
+    norm.training = False
+
+    def policy(obs):
+        o = norm.normalize_obs(obs[None, :])
+        return model.predict(o, deterministic=True)[0][0]
+    return policy
+
+
+_policies = {}
+
+
+def _get_policy(model_path):
+    # Workers keep their simulator and cache policies by path, so one pool can
+    # evaluate many checkpoints (eval/watch.py).
+    if model_path not in _policies:
+        _policies.clear()
+        _policies[model_path] = load_policy(model_path)
+    return _policies[model_path]
+
+
 def _init(model_path, world, rock_patch):
     global _env, _policy
     import torch
@@ -40,17 +66,7 @@ def _init(model_path, world, rock_patch):
     from jezero_env.env import JezeroEnv
     _env = JezeroEnv(world=world, rock_patch=rock_patch)
     if model_path:
-        from stable_baselines3 import PPO
-        model = PPO.load(model_path, device='cpu')
-        stats = _vecnormalize_path(model_path)
-        with open(stats, 'rb') as f:
-            norm = pickle.load(f)
-        norm.training = False
-
-        def policy(obs):
-            o = norm.normalize_obs(obs[None, :])
-            return model.predict(o, deterministic=True)[0][0]
-        _policy = policy
+        _policy = load_policy(model_path)
 
 
 def _vecnormalize_path(model_path):
@@ -61,12 +77,16 @@ def _vecnormalize_path(model_path):
 
 
 def _episode(task):
-    variant, seed, controller = task
+    variant, seed, controller = task[:3]
+    model_path = task[3] if len(task) > 3 else None
     from jezero_env.baseline import policy as baseline_policy
     for k, v in VARIANTS[variant].items():
         setattr(_env, k, v)
     obs, info = _env.reset(seed=seed)
-    act = baseline_policy if controller == 'baseline' else _policy
+    if controller == 'baseline':
+        act = baseline_policy
+    else:
+        act = _get_policy(model_path) if model_path else _policy
     total = 0.0
     s = _env.sim.state()
     path = [(round(s.x, 2), round(s.y, 2))]
@@ -80,7 +100,7 @@ def _episode(task):
     return dict(variant=variant, seed=seed, controller=controller, segment=info['segment'],
                 start_dist=info['distance'], goal=list(info['goal']), event=step_info['event'],
                 sim_time=step_info['sim_time'], final_dist=step_info['distance'], ret=total,
-                path=path)
+                path=path, stats=step_info.get('episode_stats', {}))
 
 
 def summarize(rows):
