@@ -636,7 +636,8 @@ added (cheap).
 | 0 | `c0_control` | `ppo_rocks` setup + `clock_obs`, 1.5M | **invalid as a control**: also had goal clearance 1.0 m (see below) |
 | 0b | `c0b_control` | `ppo_rocks` setup + `clock_obs`, goal clearance back to 1.5 m, 1.5M | done: **fails like c0** (training goal 7–15%, held-out 0%) |
 | 0c | `c0c_control` | exactly the `ppo_rocks` setup on the current code, **no clock** | done: fails too (training goal 9–18%). See "Seed variance" |
-| 0d | `clock_s0/s1/s2` | 3-seed screen (400k): clock on, vs the no-clock seeds already run | running |
+| 0d | `clock_s0/s1/s2` | 3-seed screen (400k): clock on, vs the no-clock seeds already run | done: **clock hurts** (6/13/16% vs 69/92/75%); off |
+| – | control | no clock, original reset, `ppo_rocks` setup: learns on 3/3 seeds (69–92% at 400k) | **established** |
 | 1 | | varied worlds: rocks everywhere, goals anywhere, held-out region, then more terrains | |
 | 2 | | proprioception | |
 | 3 | | look-ahead | |
@@ -712,6 +713,19 @@ separates them. If it fails too, results need several seeds per experiment.
 3. **Method from here: ≥ 3 seeds per setting**, 400k-step screening runs (curves
    separate by ~350k), full-length runs only for settings that survive
    screening; report the spread, not one run.
+
+### The clock observation hurts (2026-09-30)
+
+3 seeds each, training goal rate at 400k: **no clock 69% / 92% / 75%; with
+clock 6% / 13% / 16%** (and `c0b`, a fourth clock run, also failed). The
+"clock fix" made training much worse, although without it the reward depends on
+something the policy can't see. Mechanism not confirmed; best guess: with the
+clock visible the policy learns that a late finish earns almost no goal bonus
+(it decays to 0 with the budget), weakening the pull to finish, which matches
+the runs' symptom of stalling ~6 m short. `clock_obs` stays in the code, off by
+default. The principled alternative is to remove the time dependence from the
+reward instead: a constant goal bonus (the per-step time cost still rewards
+finishing sooner), no clock needed.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
