@@ -641,7 +641,7 @@ added (cheap).
 | 0e | `bonusc_s0/s1/s2` | constant goal bonus instead of the decaying one | done: **no better** (70/92/13% vs 68/90/73%); not adopted |
 | 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
 | 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | done: **no measurable gain** (hard 52% = 52%, unseen 67% vs 73%); not adopted at 400k |
-| 3 | | look-ahead | |
+| 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | running |
 | 4 | | reward: stuck penalty, heading term, tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
 

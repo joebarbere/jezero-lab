@@ -93,6 +93,13 @@ PROPRIO_LAYOUT = (
 )
 PROPRIO_SIZE = sum(n for _, n in PROPRIO_LAYOUT)
 PROGRESS_STEP = 0.25   # m
+# lookahead=True: terrain height profiles along rays fanned around the goal
+# bearing, relative to the rover's height, appended after proprio (if any) and
+# before the fine patch. [Hardware: depth camera + mapping; idealised here: the
+# true terrain, all around, aimed at the goal rather than the camera's facing.]
+LOOKAHEAD_ANGLES = (-40.0, -20.0, 0.0, 20.0, 40.0)    # deg from the goal bearing
+LOOKAHEAD_RANGES = tuple(1.5 * i for i in range(1, 9))  # 1.5 .. 12 m
+LOOKAHEAD_SIZE = len(LOOKAHEAD_ANGLES) * len(LOOKAHEAD_RANGES)
 NO_PROGRESS_SCALE = 30.0  # s
 
 
@@ -175,6 +182,8 @@ class JezeroEnv(gym.Env):
         (the default) reproduces the observation older checkpoints were trained on.
     proprio: append proprioception (PROPRIO_LAYOUT): wheel speeds, slip,
         roll/pitch rates, steering and bogie angles, time since last progress.
+    lookahead: append terrain height profiles out to 12 m along rays around the
+        goal bearing (LOOKAHEAD_*): scarps and rocks before the rover reaches them.
     rock_patch: append a 9x9 patch at 0.4 m of terrain heights (relative to the
         rover). On rock worlds the heightmap includes the rocks, so this is how
         the policy sees rocks the 1 m patch misses.
@@ -186,12 +195,13 @@ class JezeroEnv(gym.Env):
     def __init__(self, world: str = 'jezero_delta', segments=(0,), random_heading: bool = False,
                  spawn_jitter: float = 0.0, goal_mode: str = 'segments', rock_patch: bool = False,
                  clock_obs: bool = False, goal_bonus: str = 'decay', holdout=None,
-                 proprio: bool = False,
+                 proprio: bool = False, lookahead: bool = False,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
                  camera: bool = False):
         super().__init__()
         self.sim = JezeroSim(world, step_size=step_size, camera=camera, report_joints=proprio)
         self.proprio = proprio
+        self.lookahead = lookahead
         self.waypoints = self.sim.meta.get('waypoints')
         if not self.waypoints or len(self.waypoints) < 2:
             raise ValueError(f'world {world!r} has no waypoint list in its .yaml')
@@ -214,6 +224,7 @@ class JezeroEnv(gym.Env):
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         size = (OBS_SIZE + (1 if clock_obs else 0) + (PROPRIO_SIZE if proprio else 0)
+                + (LOOKAHEAD_SIZE if lookahead else 0)
                 + (FINE_PATCH * FINE_PATCH if rock_patch else 0))
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(size,), dtype=np.float32)
 
@@ -330,6 +341,12 @@ class JezeroEnv(gym.Env):
             parts.append(wheel + [sum(wheel) / len(wheel) - v_fwd, roll_rate, pitch_rate]
                          + list(s.corner_pos) + list(s.bogie_pos)
                          + [min(self._since_progress, NO_PROGRESS_SCALE) / NO_PROGRESS_SCALE])
+        if self.lookahead:
+            bearing = math.atan2(dy, dx)
+            th = bearing + np.radians(np.array(LOOKAHEAD_ANGLES))[:, None]
+            r = np.array(LOOKAHEAD_RANGES)[None, :]
+            lx, ly = s.x + r * np.cos(th), s.y + r * np.sin(th)
+            parts.append((self.heightmap.sample(lx.ravel(), ly.ravel()) - ground).tolist())
         if self.rock_patch:
             fx = s.x + c * self._fine_fwd - si * self._fine_left
             fy = s.y + si * self._fine_fwd + c * self._fine_left
