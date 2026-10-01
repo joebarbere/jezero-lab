@@ -821,6 +821,35 @@ no measurable gain; look-ahead worse; stuck termination worse. Since experiment 
 every change has been neutral or worse at 400k, which raises the question of
 whether 400k screens can show most changes at all.
 
+### exp1 at full length: no gain past 400k, and an unstable policy (2026-10-01)
+
+Each exp1 seed resumed from its 400k checkpoint to 1.5M (`exp1_full_s0/s1/s2`),
+held-out evaluation every 200k (16 spawns per variant), hard / unseen %:
+
+| Checkpoint | s0 | s1 | s2 | mean |
+|---|---|---|---|---|
+| 400k | 69 / 62 | 6 / 69 | 81 / 88 | **52 / 73** |
+| 600k | 38 / 69 | 6 / 75 | 50 / 12 | 31 / 52 |
+| 800k | 44 / 50 | 38 / 69 | 56 / 81 | 46 / 67 |
+| 1.0M | 81 / 50 | 25 / 69 | 62 / 62 | 56 / 60 |
+| 1.2M | 44 / 50 | 19 / 88 | 56 / 69 | 40 / 69 |
+| 1.4M | 25 / 38 | 31 / 88 | 56 / 81 | 37 / 69 |
+
+1. **No gain past 400k** on average; training goal rate flat at 65–75% from 600k.
+   The 400k screens weren't hiding improvements for this configuration.
+2. **Unstable policy**: swings far larger than n = 16 noise (s2 unseen
+   88 → 12 → 81% over consecutive checkpoints). Training keeps reshaping the
+   policy instead of converging; the constant learning rate (3e-4) is the first
+   suspect.
+3. Seeds diverge in character: s1 reaches 88% unseen but stays poor on hard; s0
+   drifts down on unseen.
+
+Next: training stability before more reward/input changes (some "neutral"
+results may be this noise): a learning rate decaying to 0 and possibly larger
+updates; separate *validation* spawns for checkpoint selection (selecting on the
+reported held-out spawns would overfit them); larger evaluations to rank
+checkpoints.
+
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
 materials: IMU ~$25–35, bogie-angle encoders, feedback servos, a depth camera for
