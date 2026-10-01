@@ -17,6 +17,7 @@ import csv
 import functools
 import json
 import os
+import re
 import time
 
 import torch
@@ -25,6 +26,7 @@ from stable_baselines3.common.callbacks import BaseCallback, CallbackList, Check
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 
+STEP_RE = re.compile(r'ppo_(\d+)_steps\.zip$')
 RUNS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'runs')
 
 
@@ -126,6 +128,19 @@ CSV_FIELDS = ('event', 'segment', 'start_dist_m', 'final_dist_m', 'progress_frac
               'reward_out_of_bounds', 'reward_stuck')
 
 
+def lr_schedule(kind, lr, steps, start_steps=0):
+    """SB3 learning-rate schedule. 'linear' decays from `lr` to 0 over this
+    run's `steps`. SB3 passes progress_remaining over the whole run including
+    a resumed checkpoint's `start_steps`, so rescale to start at `lr` here."""
+    if kind == 'constant':
+        return lr
+    p0 = steps / (steps + start_steps)        # progress_remaining when this run starts
+
+    def schedule(progress_remaining):
+        return lr * min(1.0, progress_remaining / p0)
+    return schedule
+
+
 class NormalizedCheckpoint(CheckpointCallback):
     """CheckpointCallback that also saves the VecNormalize statistics."""
 
@@ -161,6 +176,9 @@ def main():
                     help='observe the fine 0.4 m terrain patch (sees baked-in rocks)')
     ap.add_argument('--torch-threads', type=int, default=2)
     ap.add_argument('--resume', help='path to a checkpoint .zip to continue from')
+    ap.add_argument('--lr', type=float, default=3e-4)
+    ap.add_argument('--lr-schedule', default='constant', choices=['constant', 'linear'],
+                    help='linear: decay to 0 over this run (from the resume point, if resuming)')
     args = ap.parse_args()
 
     torch.set_num_threads(args.torch_threads)
@@ -183,13 +201,16 @@ def main():
         # checkpoints/ppo_<N>_steps.zip pairs with checkpoints/ppo_vecnormalize_<N>_steps.pkl
         stats = args.resume.replace('ppo_', 'ppo_vecnormalize_').replace('.zip', '.pkl')
         venv = VecNormalize.load(stats, venv)
-        model = PPO.load(args.resume, env=venv, tensorboard_log=out)
+        start = int(STEP_RE.search(args.resume).group(1))
+        model = PPO.load(args.resume, env=venv, tensorboard_log=out, custom_objects={
+            'learning_rate': lr_schedule(args.lr_schedule, args.lr, args.steps, start)})
     else:
         venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
         model = PPO(
             'MlpPolicy', venv,
             n_steps=512, batch_size=512, n_epochs=10,
-            gamma=0.99, gae_lambda=0.95, learning_rate=3e-4, clip_range=0.2, ent_coef=0.0,
+            gamma=0.99, gae_lambda=0.95, learning_rate=lr_schedule(args.lr_schedule, args.lr, args.steps),
+            clip_range=0.2, ent_coef=0.0,
             policy_kwargs=dict(net_arch=dict(pi=[128, 128], vf=[128, 128])),
             tensorboard_log=out, seed=args.seed, verbose=0,
         )
