@@ -642,7 +642,7 @@ added (cheap).
 | 1 | `exp1_map_s0/s1/s2` | varied worlds: rocks everywhere (`jezero_delta_rocks_k05_full`), goals anywhere (`--goal-mode map`), held-out region | done: **unseen 73% vs 46%** (non-overlapping seeds); **adopted as the new baseline**. More terrains still to do |
 | 2 | `exp2_proprio_s0/s1/s2` | proprioception: wheel speeds, slip, roll/pitch rates, steering + bogie angles, no-progress time (16 inputs), on the exp1 baseline | done: **no measurable gain** (hard 52% = 52%, unseen 67% vs 73%); not adopted at 400k |
 | 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | done: **worse at 400k** (hard 25% vs 52%, unseen 38% vs 73%); learns slower. Not adopted; see screening bias |
-| 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | running |
+| 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | done: **worse on hard** (25% vs 52%), unseen 62% vs 73%; not adopted |
 | 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
 | 5 | | terrain CNN; privileged critic | |
 
@@ -799,6 +799,27 @@ both mean "not within 400k with a flat MLP". Reward changes (experiment 4) leave
 the observation alone and are fair to screen at 400k. Input changes need longer
 screens (~1M) or a model that handles them better (the terrain CNN,
 experiment 5).
+
+### Experiment 4a: stuck termination makes *hard* worse (2026-09-30)
+
+| | hard goal (tipped) | unseen goal (tipped) |
+|---|---|---|
+| **exp1 mean (range)** | **52%** (6–81) | **73%** (62–88) |
+| exp4a s0 / s1 / s2 | 6 / 25 / 44% | 88 / 75 / 25% |
+| **exp4a mean (range)** | **25%** (6–44) | **62%** (25–88) |
+
+Hard is clearly worse (every seed at or below exp1's mean); unseen about the
+same. In training the rule fired a lot (seed 2: 38–49% of episodes ended
+"stuck" late in training), so 30 s without 0.25 m of progress probably also
+catches legitimate manoeuvring among rocks, punishing the careful driving *hard*
+needs. And it doesn't catch slow crawls: seed 0 still timed out on 25% of
+episodes. Not adopted; a longer limit is untested.
+
+**Scorecard after experiment 4a** (400k, 3 seeds, same held-out spawns): only
+experiment 1 helped; clock and constant bonus hurt or didn't help; proprioception
+no measurable gain; look-ahead worse; stuck termination worse. Since experiment 1,
+every change has been neutral or worse at 400k, which raises the question of
+whether 400k screens can show most changes at all.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
