@@ -879,6 +879,25 @@ hard / unseen % (baseline 62 / 81):
 **Adopted for full-length runs.** Best configuration so far: experiment 1's
 setup + `--lr-schedule linear`, 1.5M steps.
 
+### Large evaluation of the final policies (2026-10-01)
+
+Final (1.5M) checkpoints of `exp1_full` (constant LR) and `exp5` (decaying LR), 48
+held-out spawns per variant (`runs/compare_final48.json`). On the 32 spawns never used
+for any decision (3 seeds pooled, 96 episodes per variant):
+
+| | hard | unseen |
+|---|---|---|
+| baseline | 50% (16/32) | 69% (22/32) |
+| constant LR | 44% (42/96) | 53% (51/96) |
+| **decaying LR** | **58%** (56/96) | **66%** (63/96) |
+
+All 48 spawns: decaying LR 57% / 67% (seeds 44–65% / 54–77%) vs baseline 54% / 73%;
+hard tip-overs 17–23% vs the baseline's 38%. The decaying LR is confirmed; the best
+policies are **level with the baseline and safer**, not ahead of it. The per-seed
+"88% / 94% unseen" from the 16-spawn evaluation didn't hold up (75% / 69% here).
+Next candidates to get ahead: the input experiments retested at full length with the
+decaying LR (the 400k screens were biased against them), and the terrain CNN.
+
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
 materials: IMU ~$25–35, bogie-angle encoders, feedback servos, a depth camera for

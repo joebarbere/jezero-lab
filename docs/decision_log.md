@@ -485,15 +485,37 @@ climbed steadily 69 → 81 → 81 → 81 → 88 → 88%.
 > 62%) is still the weak spot.
 
 ### D28. A larger, unbiased evaluation of the best policies
-**Status: running.** The final policies of D26 and D27, on 48 spawns per variant
-instead of 16, reported separately on the 32 spawns that were never used for any
-decision.
+**Change.** The final (1.5M) policies of D26 (constant learning rate) and D27 (decaying),
+evaluated on **48 spawns per variant** instead of 16, and reported separately on the
+**32 spawns never used for any decision**.
 
-> **Explainer: selection bias.** The decaying learning rate was chosen *because* it did
-> well on the first 16 evaluation spawns, so those 16 are now slightly flattering. Fresh
-> spawns that played no part in any decision give the honest estimate. The same logic is
-> why machine learning keeps a *validation* set (for choosing) separate from a *test* set
-> (for reporting).
+**Numbers** (fresh spawns only; 3 seeds pooled = 96 episodes per variant):
+
+| | hard | unseen |
+|---|---|---|
+| baseline | 50% (16/32) | 69% (22/32) |
+| constant LR | 44% (42/96) | 53% (51/96) |
+| **decaying LR** | **58%** (56/96) | **66%** (63/96) |
+| decaying LR, seed 0 / 1 / 2 | 44 / 66 / 66% | 53 / 75 / 69% |
+
+On *hard* the decaying-LR policies tip over in 17–23% of episodes vs the baseline's 38%.
+
+**Conclusions.**
+1. The decaying learning rate is confirmed: clearly better than constant on fresh spawns.
+2. The learned policy is now **level with the baseline** (slightly ahead on hard,
+   slightly behind on unseen; neither gap is meaningful at this sample size) and
+   **drives more safely** among boulders.
+3. The D27 headline "two seeds beat the baseline on unseen (88%, 94%)" **did not hold
+   up**: on more spawns those seeds score 75% and 69%, level with the baseline.
+
+> **Explainer: selection bias and small samples, caught in the act.** The decaying
+> learning rate was chosen because it looked good on the first 16 evaluation spawns,
+> so those spawns flatter it; and 16 episodes is a tiny sample, where 88% vs 81% is one
+> or two episodes. On 32 fresh spawns, the impressive per-seed numbers shrank back to
+> the baseline's level, while the *arm-level* conclusion (decaying beats constant)
+> survived. This is why ML keeps a *validation* set (for choosing) separate from a
+> *test* set (for reporting), and why a result should be stated only as strongly as
+> its sample allows.
 
 ---
 
@@ -517,4 +539,5 @@ decision.
 10. **Shaping can backfire** (D25); **"not worse" isn't "better"** (D21).
 11. **Check defaults against standard practice** (D27): the biggest late gain came from
     a standard learning-rate schedule.
-12. **Keep choosing and reporting separate** (D28).
+12. **Keep choosing and reporting separate** (D28): on fresh spawns, "beats the
+    baseline" became "matches the baseline, more safely".
