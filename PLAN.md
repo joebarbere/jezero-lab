@@ -1,5 +1,8 @@
 # jezero-lab — plan
 
+(The training decisions below are retold for RL newcomers, with explainers, in
+[docs/decision_log.md](docs/decision_log.md).)
+
 **Goal:** train an RL policy that drives the JPL Open Source Rover v4 across a
 simulated patch of Jezero Crater to a waypoint. Everything runs locally in Podman
 on this machine (Fedora 44, 12 cores, 62 GB RAM, RX 7600): no cloud, no NVIDIA

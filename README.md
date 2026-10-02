@@ -4,7 +4,9 @@ Local reinforcement-learning lab for the NASA-JPL Open Source Rover v4, driving 
 simulated patch of Jezero Crater. Runs entirely on one machine in Podman: no cloud,
 no NVIDIA GPU required.
 
-See [PLAN.md](PLAN.md) for the phases and every measured result. All five phases
+See [PLAN.md](PLAN.md) for the phases and every measured result, and
+[docs/decision_log.md](docs/decision_log.md) for every training decision with the
+numbers behind it and an explainer for RL newcomers. All five phases
 are done: the OSR runs on ROS 2 Jazzy + Gazebo Harmonic, on 256 m of real Jezero
 delta terrain from HiRISE, with waypoints on Perseverance's actual route and
 Mars-realistic boulder fields; a Gymnasium environment steps it deterministically
