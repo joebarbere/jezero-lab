@@ -647,6 +647,7 @@ added (cheap).
 | 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | done: **worse at 400k** (hard 25% vs 52%, unseen 38% vs 73%); learns slower. Not adopted; see screening bias |
 | 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | done: **worse on hard** (25% vs 52%), unseen 62% vs 73%; not adopted |
 | 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
+| 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | running |
 | 5 | | terrain CNN; privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
