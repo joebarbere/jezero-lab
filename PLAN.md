@@ -850,6 +850,32 @@ updates; separate *validation* spawns for checkpoint selection (selecting on the
 reported held-out spawns would overfit them); larger evaluations to rank
 checkpoints.
 
+### Experiment 5: a decaying learning rate helps late training (2026-10-01)
+
+Same as `exp1_full` (each exp1 seed resumed from its 400k checkpoint to 1.5M)
+but with the learning rate decaying linearly from 3e-4 at 400k to 0 at 1.5M
+(`--lr-schedule linear`; `exp5_lrdecay_s0/s1/s2`). Held-out, mean of 3 seeds,
+hard / unseen % (baseline 62 / 81):
+
+| Checkpoint | constant LR (`exp1_full`) | decaying LR (`exp5`) |
+|---|---|---|
+| 400k | 52 / 73 | 52 / 73 |
+| 600k | 31 / 52 | 40 / 71 |
+| 800k | 46 / 67 | 31 / 60 |
+| 1.0M | 56 / 60 | 42 / 67 |
+| 1.2M | 40 / 69 | **48 / 75** |
+| 1.4M | 37 / 69 | **48 / 79** |
+
+- Late checkpoints are better (1.4M: unseen 79 vs 69%, hard 48 vs 37%);
+  training goal rate ends at 76–81% vs 65–76%.
+- Two seeds beat the baseline on unseen at 1.2–1.4M: s1 88%, s2 **94%** (vs 81%).
+  s1's unseen climbs steadily (69 → 81 → 81 → 81 → 88 → 88%).
+- Not fully stable: s0's unseen dips to 25% at 800k; hard stays noisy.
+- Hard is still the weak spot (48% vs the baseline's 62%).
+
+**Adopted for full-length runs.** Best configuration so far: experiment 1's
+setup + `--lr-schedule linear`, 1.5M steps.
+
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
 materials: IMU ~$25–35, bogie-angle encoders, feedback servos, a depth camera for
