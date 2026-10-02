@@ -647,7 +647,7 @@ added (cheap).
 | 3 | `exp3_lookahead_s0/s1/s2` | look-ahead: terrain profiles on 5 rays around the goal bearing (±40°), 1.5–12 m (40 inputs), on the exp1 baseline | done: **worse at 400k** (hard 25% vs 52%, unseen 38% vs 73%); learns slower. Not adopted; see screening bias |
 | 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | done: **worse on hard** (25% vs 52%), unseen 62% vs 73%; not adopted |
 | 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
-| 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | running |
+| 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | done: **still worse** (fresh 47% / 49% vs exp5 58% / 66%); not adopted |
 | 5 | | terrain CNN; privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
@@ -898,6 +898,16 @@ policies are **level with the baseline and safer**, not ahead of it. The per-see
 "88% / 94% unseen" from the 16-spawn evaluation didn't hold up (75% / 69% here).
 Next candidates to get ahead: the input experiments retested at full length with the
 decaying LR (the 400k screens were biased against them), and the terrain CNN.
+
+### Experiment 6: look-ahead at full length, still worse (2026-10-02)
+
+Fresh spawns (#17–48), 3 seeds pooled: **hard 47%, unseen 49%** vs exp5 58% / 66%
+(baseline 50% / 69%); seeds 28 / 56 / 56% and 41 / 31 / 75%. Its checkpoint curves stay
+below exp5's from 600k on (seed 0 tipping up to 81%). It began from weaker 400k
+checkpoints, but full training with the decaying LR didn't close the gap, so "it just
+needs longer" is rejected. The flat MLP doesn't exploit 40 raw heights; next is a
+better representation (terrain CNN, or per-ray summary features). Best configuration
+unchanged: exp5.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of

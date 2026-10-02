@@ -517,6 +517,37 @@ On *hard* the decaying-LR policies tip over in 17–23% of episodes vs the basel
 > *test* set (for reporting), and why a result should be stated only as strongly as
 > its sample allows.
 
+### D29. Experiment 6, look-ahead at full length: still worse
+**Change.** Look-ahead (D24) given the fair test: its 400k checkpoints continued to 1.5M
+with the decaying learning rate, mirroring D27 exactly.
+
+**Numbers** (32 fresh spawns, 3 seeds pooled):
+
+| | hard | unseen |
+|---|---|---|
+| baseline | 50% | 69% |
+| best so far (D27, no look-ahead) | **58%** | **66%** |
+| + look-ahead (seed 0 / 1 / 2) | 28 / 56 / 56% | 41 / 31 / 75% |
+| + look-ahead, pooled | 47% | 49% |
+
+Its checkpoint curve never caught up either (it started from weaker 400k checkpoints,
+25% / 38%, but full training didn't close the gap).
+
+**Decision.** Not adopted. The information is useful (it clearly shows the scarp), but a
+flat network fed 40 raw height numbers doesn't learn to use it. Next: give it a better
+*form* (a small CNN over terrain grids, or summary features like the steepest slope per
+ray).
+
+> **Explainer: information vs representation.** Having the right information in the
+> observation isn't enough; the network has to be able to use it. A fully connected
+> network sees 40 heights as 40 unrelated numbers and must discover from scratch that
+> neighbouring samples belong together. A convolutional layer builds that structure in
+> ("nearby cells relate; the same pattern means the same thing anywhere"), which is why
+> image-like inputs almost always go through CNNs. When an input that *should* help
+> doesn't, ask whether the model can exploit its shape before concluding it's useless.
+> And D24's "it just needs longer" was a reasonable hypothesis that this experiment
+> tested and rejected.
+
 ---
 
 ## Lessons in one page
@@ -535,9 +566,12 @@ On *hard* the decaying-LR policies tip over in 17–23% of episodes vs the basel
 7. **One change at a time; "off" must reproduce the baseline exactly** (D20).
 8. **Theory proposes, experiments decide** (D18): a textbook-correct fix made training
    worse.
-9. **Know your test's blind spots** (D24): short screens punish bigger observations.
+9. **Know your test's blind spots** (D24): short screens punish bigger observations,
+   and then test the excuse (D29): longer training didn't rescue look-ahead.
 10. **Shaping can backfire** (D25); **"not worse" isn't "better"** (D21).
 11. **Check defaults against standard practice** (D27): the biggest late gain came from
     a standard learning-rate schedule.
 12. **Keep choosing and reporting separate** (D28): on fresh spawns, "beats the
     baseline" became "matches the baseline, more safely".
+13. **Information needs a usable form** (D29): the right input in the wrong shape
+    can make a policy worse.
