@@ -548,6 +548,45 @@ ray).
 > And D24's "it just needs longer" was a reasonable hypothesis that this experiment
 > tested and rejected.
 
+### D30. Experiment 7, a terrain CNN: the first clear win over the baseline ✓
+**Change.** A small convolutional network reads each terrain grid (7×7 coarse, 9×9 fine,
+optionally the 5×8 look-ahead) as a 2-D grid instead of loose numbers; same inputs,
+same schedule as D27. Two arms, 3 seeds each: **7a** CNN on the existing inputs, **7b**
+CNN + look-ahead.
+
+**Numbers** (32 fresh spawns):
+
+| | hard | unseen |
+|---|---|---|
+| baseline | 50% (16/32) | 69% (22/32) |
+| flat network (D27) | 58% (56/96) | 66% (63/96) |
+| **7a CNN** (seeds 72 / 72 / 56%; 91 / 47 / 59%) | **67%** (64/96) | 66% (63/96) |
+| **7b CNN + look-ahead** (seeds 66 / 75 / 75%; 38 / 72 / 72%) | **72%** (69/96) | 60% (58/96) |
+
+On all 48 spawns, both CNN arms average 66–67% on hard vs the baseline's 54%, and tip
+over in 12–25% of hard episodes vs the baseline's 38%.
+
+**Conclusions.**
+1. On *hard*, the CNN beats both the flat network and the baseline; every CNN seed is at
+   or above the baseline there. 7b's 72% vs 50% is unlikely to be luck (p ≈ 0.02).
+   The first learned policy in this project to genuinely beat "turn to the goal and
+   drive" among boulders, and more safely.
+2. *Unseen* hasn't moved: level with the baseline, with one weak seed per arm.
+   Generalising to new terrain is now the gap.
+3. In grid form, look-ahead is no longer harmful (better on hard, worse on unseen,
+   within noise), but not clearly worth 40 inputs and a depth camera.
+
+**Decision.** Adopt **7a (terrain CNN)** as the best configuration: simplest, no extra
+hardware, as good overall. 7b recorded as a close alternative.
+
+> **Explainer: architecture is part of the observation.** D29 concluded that look-ahead's
+> information was fine but its form wasn't usable. This experiment tested that directly:
+> with convolutions, which build in "neighbouring cells relate and the same pattern means
+> the same thing anywhere", the *existing* terrain patches became much more useful, and
+> look-ahead stopped hurting. Matching the network to the structure of the input (grids →
+> CNNs, sequences → recurrent or attention layers) is often worth more than adding new
+> inputs.
+
 ---
 
 ## Lessons in one page
@@ -573,5 +612,5 @@ ray).
     a standard learning-rate schedule.
 12. **Keep choosing and reporting separate** (D28): on fresh spawns, "beats the
     baseline" became "matches the baseline, more safely".
-13. **Information needs a usable form** (D29): the right input in the wrong shape
-    can make a policy worse.
+13. **Information needs a usable form** (D29, D30): the right input in the wrong shape
+    can make a policy worse; the right architecture made existing inputs pay off.

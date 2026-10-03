@@ -648,8 +648,8 @@ added (cheap).
 | 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | done: **worse on hard** (25% vs 52%), unseen 62% vs 73%; not adopted |
 | 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
 | 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | done: **still worse** (fresh 47% / 49% vs exp5 58% / 66%); not adopted |
-| 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | running |
-| 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead (does a grid representation make look-ahead usable?) | running |
+| 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | done: **hard 67% vs baseline 50%** (fresh), unseen 66%; **adopted: best configuration** |
+| 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead | done: hard **72%**, unseen 60% (fresh); close alternative, not adopted |
 | 5 | | privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
@@ -910,6 +910,16 @@ checkpoints, but full training with the decaying LR didn't close the gap, so "it
 needs longer" is rejected. The flat MLP doesn't exploit 40 raw heights; next is a
 better representation (terrain CNN, or per-ray summary features). Best configuration
 unchanged: exp5.
+
+### Experiment 7: terrain CNN, the first clear win over the baseline (2026-10-03)
+
+Fresh spawns (#17–48), 3 seeds pooled: **7a CNN hard 67% (64/96), unseen 66%;
+7b CNN + look-ahead hard 72% (69/96), unseen 60%**; flat network (exp5) 58% / 66%;
+baseline 50% / 69%. All 48 spawns: CNN arms 66–67% hard vs the baseline's 54%, with hard
+tip-overs 12–25% vs 38%. Every CNN seed at or above the baseline on hard; 7b vs baseline
+p ≈ 0.02. Unseen is still level with the baseline (one weak seed per arm: 47%, 38%).
+**Best configuration: exp1 world + map goals + decaying LR + `--policy cnn`, 1.5M steps.**
+Gap to close next: unseen generalisation and seed-to-seed spread.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
