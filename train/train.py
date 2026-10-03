@@ -128,6 +128,18 @@ CSV_FIELDS = ('event', 'segment', 'start_dist_m', 'final_dist_m', 'progress_frac
               'reward_out_of_bounds', 'reward_stuck')
 
 
+def policy_kwargs(kind, env_kwargs):
+    kwargs = dict(net_arch=dict(pi=[128, 128], vf=[128, 128]))
+    if kind == 'cnn':
+        from jezero_env.env import obs_layout
+        from jezero_env.policies import TerrainCNN
+        layout = obs_layout(**{k: env_kwargs.get(k, False)
+                               for k in ('rock_patch', 'clock_obs', 'proprio', 'lookahead')})
+        kwargs.update(features_extractor_class=TerrainCNN,
+                      features_extractor_kwargs=dict(layout=layout))
+    return kwargs
+
+
 def lr_schedule(kind, lr, steps, start_steps=0):
     """SB3 learning-rate schedule. 'linear' decays from `lr` to 0 over this
     run's `steps`. SB3 passes progress_remaining over the whole run including
@@ -176,6 +188,8 @@ def main():
                     help='observe the fine 0.4 m terrain patch (sees baked-in rocks)')
     ap.add_argument('--torch-threads', type=int, default=2)
     ap.add_argument('--resume', help='path to a checkpoint .zip to continue from')
+    ap.add_argument('--policy', default='mlp', choices=['mlp', 'cnn'],
+                    help='cnn: read terrain grids through small CNNs (jezero_env.policies.TerrainCNN)')
     ap.add_argument('--lr', type=float, default=3e-4)
     ap.add_argument('--lr-schedule', default='constant', choices=['constant', 'linear'],
                     help='linear: decay to 0 over this run (from the resume point, if resuming)')
@@ -211,7 +225,7 @@ def main():
             n_steps=512, batch_size=512, n_epochs=10,
             gamma=0.99, gae_lambda=0.95, learning_rate=lr_schedule(args.lr_schedule, args.lr, args.steps),
             clip_range=0.2, ent_coef=0.0,
-            policy_kwargs=dict(net_arch=dict(pi=[128, 128], vf=[128, 128])),
+            policy_kwargs=policy_kwargs(args.policy, env_kwargs),
             tensorboard_log=out, seed=args.seed, verbose=0,
         )
 

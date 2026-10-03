@@ -648,7 +648,9 @@ added (cheap).
 | 4a | `exp4a_stuck_s0/s1/s2` | stuck termination: no 0.25 m of progress in 30 s ends the episode at −50 (training only), on the exp1 baseline | done: **worse on hard** (25% vs 52%), unseen 62% vs 73%; not adopted |
 | 4b, 4c | | heading-alignment term; tilt-rate penalty (each separately) | |
 | 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | done: **still worse** (fresh 47% / 49% vs exp5 58% / 66%); not adopted |
-| 5 | | terrain CNN; privileged critic | |
+| 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | running |
+| 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead (does a grid representation make look-ahead usable?) | running |
+| 5 | | privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
 

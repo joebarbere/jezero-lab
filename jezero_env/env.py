@@ -106,6 +106,27 @@ LOOKAHEAD_SIZE = len(LOOKAHEAD_ANGLES) * len(LOOKAHEAD_RANGES)
 NO_PROGRESS_SCALE = 30.0  # s
 
 
+def obs_layout(rock_patch=False, clock_obs=False, proprio=False, lookahead=False):
+    """Where each part of the observation vector sits: [(name, start, shape)].
+    Grids are flattened row-major from regular sample grids, so they reshape
+    back to 2-D: 'terrain' (PATCH x PATCH), 'lookahead' (rays x ranges),
+    'fine' (FINE_PATCH x FINE_PATCH). Used by jezero_env.policies.TerrainCNN."""
+    parts = [('scalars', (OBS_SIZE - PATCH * PATCH,)), ('terrain', (PATCH, PATCH))]
+    if clock_obs:
+        parts.append(('clock', (1,)))
+    if proprio:
+        parts.append(('proprio', (PROPRIO_SIZE,)))
+    if lookahead:
+        parts.append(('lookahead', (len(LOOKAHEAD_ANGLES), len(LOOKAHEAD_RANGES))))
+    if rock_patch:
+        parts.append(('fine', (FINE_PATCH, FINE_PATCH)))
+    out, start = [], 0
+    for name, shape in parts:
+        out.append((name, start, shape))
+        start += int(np.prod(shape))
+    return out
+
+
 class Heightmap:
     """The world's heightmap, in world coordinates, for observations."""
 
