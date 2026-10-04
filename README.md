@@ -13,12 +13,15 @@ Mars-realistic boulder fields; a Gymnasium environment steps it deterministicall
 in-process at ~15× real time; PPO policies are trained and evaluated against a
 hand-written baseline, with path plots and chase-camera video.
 
-**The honest result:** the learned policy does not beat the baseline. On smooth
-terrain the baseline is near-optimal; among boulders the policy tips over less
-but doesn't generalise to terrain it didn't train on. Details and next steps in
-PLAN.md (Phase 4 and 5 results).
+**Where it stands (2026-10):** with a small CNN reading the terrain grids, the learned
+policy **beats the hand-written baseline among boulders**: on 32 fresh held-out
+starts it reaches the goal 67% of the time vs the baseline's 50%, and tips over
+about half as often. On terrain it never trained on, it is level with the baseline
+(66% vs 69%), and some training seeds are much weaker than others; that's the
+next gap. The path there, including the ideas that didn't work, is in
+[docs/decision_log.md](docs/decision_log.md).
 
-![Baseline (left) climbs a boulder and tips over; the policy (right) goes around it](docs/media/hard5_frame.png)
+![Baseline (left) tips over on the rocks after 31 s; the CNN policy (right) reaches the goal](docs/media/cnn_hard26_frame.png)
 
 ## Setup
 
@@ -112,12 +115,17 @@ podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
 
 ```bash
 R="podman run --rm -v $PWD:/repo:z -w /repo jezero-lab:jazzy-harmonic jezero_env/run.sh"
-$R python3 -m train.train --name ppo_rocks --world jezero_delta_rocks_k05 \
-    --rock-patch --goal-mode route --segments 0 1 2 --random-heading --spawn-jitter 10
-$R python3 -m eval.evaluate runs/ppo_rocks/final.zip --world jezero_delta_rocks_k05 \
-    --rock-patch --episodes 12 --workers 6 --out runs/eval.json
-$R python3 -m eval.plot_paths runs/eval.json --world jezero_delta_rocks_k05
-eval/make_demo.sh runs/ppo_rocks/final.zip runs/eval.json hard:5 unseen:0   # needs a display
+# Best configuration: terrain CNN, goals anywhere on the map, rocks everywhere,
+# 400k steps at a constant learning rate, then 1.1M more with it decaying to 0.
+W="--world jezero_delta_rocks_k05_full --rock-patch --goal-mode map --policy cnn \
+   --segments 0 1 2 --random-heading --spawn-jitter 10 --envs 5"
+$R python3 -m train.train --name cnn $W --steps 400000
+$R python3 -m train.train --name cnn_full $W --steps 1100000 --lr-schedule linear \
+    --resume runs/cnn/checkpoints/ppo_400000_steps.zip
+$R python3 -m eval.compare --world jezero_delta_rocks_k05_full --arm cnn runs/cnn_full \
+    --episodes 48 --workers 12 --out runs/compare_cnn.json
+WORLD=jezero_delta_rocks_k05_full eval/make_demo.sh runs/cnn_full/final.zip \
+    runs/compare_cnn.json hard:26 unseen:21   # needs a display
 ```
 
 `train.train` writes TensorBoard logs and checkpoints to `runs/<name>/`
