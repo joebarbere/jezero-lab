@@ -68,6 +68,8 @@ def main():
     from torch.utils.tensorboard import SummaryWriter
     cfg = json.load(open(os.path.join(args.run, 'config.json')))
     world = cfg.get('env_kwargs', {}).get('world', cfg.get('world', 'jezero_delta'))
+    if isinstance(world, list):   # multi-world run: evaluate on its first world
+        world = world[0]
     obs = obs_options(config_path=os.path.join(args.run, 'config.json'))
     out = os.path.join(args.run, 'eval')
     os.makedirs(out, exist_ok=True)

@@ -33,6 +33,9 @@ RUNS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 def make_env(rank, seed, env_kwargs):
     # Imported in the child: each subprocess builds its own simulator.
     from jezero_env.env import JezeroEnv
+    worlds = env_kwargs['world']
+    if isinstance(worlds, list):   # several worlds: worker i drives worlds[i % n]
+        env_kwargs = dict(env_kwargs, world=worlds[rank % len(worlds)])
     env = JezeroEnv(**env_kwargs)
     env.reset(seed=seed + rank)
     return env
@@ -172,7 +175,9 @@ def main():
     ap.add_argument('--segments', type=int, nargs='+', default=[0, 1, 2])
     ap.add_argument('--random-heading', action='store_true')
     ap.add_argument('--spawn-jitter', type=float, default=0.0)
-    ap.add_argument('--world', default='jezero_delta')
+    ap.add_argument('--world', nargs='+', default=['jezero_delta'],
+                    help='one or more worlds; with several, worker i drives world i %% n '
+                         '(use --envs as a multiple of the number of worlds)')
     ap.add_argument('--goal-mode', default='segments', choices=['segments', 'route', 'map'])
     ap.add_argument('--goal-bonus', default='decay', choices=['decay', 'constant'],
                     help='decay: bonus shrinks with the budget used; constant: full bonus')
@@ -198,7 +203,10 @@ def main():
     torch.set_num_threads(args.torch_threads)
     out = os.path.join(RUNS, args.name)
     os.makedirs(out, exist_ok=True)
-    env_kwargs = dict(world=args.world, segments=tuple(args.segments),
+    world = args.world[0] if len(args.world) == 1 else list(args.world)
+    if isinstance(world, list) and args.envs % len(world):
+        raise SystemExit(f'--envs {args.envs} is not a multiple of {len(world)} worlds')
+    env_kwargs = dict(world=world, segments=tuple(args.segments),
                       random_heading=args.random_heading, spawn_jitter=args.spawn_jitter,
                       goal_mode=args.goal_mode, rock_patch=args.rock_patch,
                       clock_obs=args.clock_obs, goal_bonus=args.goal_bonus,

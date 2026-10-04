@@ -194,7 +194,9 @@ class JezeroEnv(gym.Env):
         (a segments-trained policy reached 42% on an unseen segment).
         'map' picks them anywhere on the map, ROUTE_GOAL_DIST apart, never in
         or across the `holdout` box, so that region stays unseen for evaluation.
-    holdout: (x0, x1, y0, y1) for goal_mode='map'; default DEFAULT_HOLDOUT.
+    holdout: (x0, x1, y0, y1) for goal_mode='map'; () for none. Default:
+        DEFAULT_HOLDOUT on the jezero_delta worlds (it's their 'unseen' segment),
+        none elsewhere (held-out sites are whole separate worlds).
     goal_bonus: 'decay' (default): GOAL_BONUS x the fraction of the budget left,
         so the reward depends on time the policy can't see. 'constant': the full
         GOAL_BONUS whenever the goal is reached, so the reward doesn't depend on
@@ -239,7 +241,9 @@ class JezeroEnv(gym.Env):
         if goal_mode not in ('segments', 'route', 'map'):
             raise ValueError(f'goal_mode: {goal_mode!r}')
         self.goal_mode = goal_mode
-        self.holdout = tuple(holdout) if holdout is not None else DEFAULT_HOLDOUT
+        if holdout is None:
+            holdout = DEFAULT_HOLDOUT if world.startswith('jezero_delta') else ()
+        self.holdout = tuple(holdout)
         self.max_episode_seconds = max_episode_seconds
         self.heightmap = Heightmap(world, self.sim.meta)
         self.rocks = Rocks(self.sim.meta.get('rocks', []))
@@ -291,6 +295,8 @@ class JezeroEnv(gym.Env):
         return self.waypoints[seg], self.waypoints[seg + 1]
 
     def in_holdout(self, x, y):
+        if not self.holdout:
+            return False
         x0, x1, y0, y1 = self.holdout
         return x0 <= x <= x1 and y0 <= y <= y1
 
