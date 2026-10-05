@@ -115,10 +115,12 @@ podman run --rm -v "$PWD:/repo:z" -w /repo jezero-lab:jazzy-harmonic \
 
 ```bash
 R="podman run --rm -v $PWD:/repo:z -w /repo jezero-lab:jazzy-harmonic jezero_env/run.sh"
-# Best configuration: terrain CNN, goals anywhere on the map, rocks everywhere,
+# Best configuration: terrain CNN on six sites (terrain/build_sites.sh builds the
+# extra five; one worker each), goals anywhere on the map, rocks everywhere,
 # 400k steps at a constant learning rate, then 1.1M more with it decaying to 0.
-W="--world jezero_delta_rocks_k05_full --rock-patch --goal-mode map --policy cnn \
-   --segments 0 1 2 --random-heading --spawn-jitter 10 --envs 5"
+SITES=$(printf 'jezero_%s_rocks_k05_full ' delta floor seitah upper margin rimwest)
+W="--world $SITES --rock-patch --goal-mode map --policy cnn \
+   --segments 0 1 2 --random-heading --spawn-jitter 10 --envs 6"
 $R python3 -m train.train --name cnn $W --steps 400000
 $R python3 -m train.train --name cnn_full $W --steps 1100000 --lr-schedule linear \
     --resume runs/cnn/checkpoints/ppo_400000_steps.zip
