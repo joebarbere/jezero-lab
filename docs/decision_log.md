@@ -587,6 +587,46 @@ hardware, as good overall. 7b recorded as a close alternative.
 > CNNs, sequences → recurrent or attention layers) is often worth more than adding new
 > inputs.
 
+### D31. Experiment 8, more terrain: a modest gain, and a correction ✓
+**Change.** Seven new 256 m HiRISE sites along Perseverance's route
+(`terrain/build_sites.sh`): five for training, two held out entirely. The terrain CNN
+(D30's setup, same 1.5M steps) trained on six sites (delta + five), one worker per site.
+Both it and the one-site CNN were tested on the delta and on the two held-out sites.
+
+**Numbers** (goal rate; delta = 32 fresh spawns, held-out sites = all 48; 3 seeds pooled):
+
+| | delta hard | delta unseen | site A hard / unseen | site B hard / unseen |
+|---|---|---|---|---|
+| baseline | 50% | 69% | 71% / 79% | 73% / 96% |
+| one-site CNN (D30) | 67% | 66% | **85%** / 87% | 78% / 94% |
+| **six-site CNN** | **71%** | **76%** | 80% / **90%** | 79% / 96% |
+
+Tip-overs on the delta's unseen segment: 11% (six sites) vs 28% (one site) vs 19%
+(baseline).
+
+**Conclusions.**
+1. **The one-site CNN already generalised to new sites.** On both held-out sites it
+   beats the baseline on hard (78–85% vs 71–73%) and is level on the easier unseen
+   routes. D30's "unseen generalisation is the gap" was wrong as a general claim: the
+   delta's unseen segment (the scarp) is unusually hard, not representative of new
+   terrain.
+2. **Six sites help where it was weakest:** delta unseen 66% → 76%, the first time any
+   policy is ahead of the baseline there (not yet significant: 73/96 vs 22/32), with
+   tip-overs down from 28% to 11%. On the held-out sites the two arms are level within
+   noise.
+3. **Seed spread remains:** seed 1 is the weakest of three in both experiments
+   (e.g. 58% vs 85% on delta hard).
+
+**Decision.** Adopt the **six-site CNN** as the best configuration: more varied data at
+the same cost, better on the hardest test, no worse elsewhere. Next lever: seed
+reliability (more seeds, choosing checkpoints on validation spawns).
+
+> **Explainer: check that your test measures what you think.** One held-out segment
+> stood in for "new terrain" for seven experiments. Building genuinely new test sites
+> showed it was the hardest place on the map, not a typical one: the policy generalised
+> better than that test suggested. A single held-out set is a sample of one; when a
+> conclusion rests on it, get a second.
+
 ---
 
 ## Lessons in one page
@@ -614,3 +654,5 @@ hardware, as good overall. 7b recorded as a close alternative.
     baseline" became "matches the baseline, more safely".
 13. **Information needs a usable form** (D29, D30): the right input in the wrong shape
     can make a policy worse; the right architecture made existing inputs pay off.
+14. **One test set is a sample of one** (D31): new held-out sites showed the old
+    "unseen" segment was the hardest place on the map, not a typical one.

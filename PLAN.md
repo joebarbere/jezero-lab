@@ -921,6 +921,16 @@ p ≈ 0.02. Unseen is still level with the baseline (one weak seed per arm: 47%,
 **Best configuration: exp1 world + map goals + decaying LR + `--policy cnn`, 1.5M steps.**
 Gap to close next: unseen generalisation and seed-to-seed spread.
 
+### Experiment 8: more terrain (2026-10-05)
+
+Six training sites vs one, same terrain CNN and 1.5M steps, 3 seeds each. Delta, fresh
+spawns: six-site **hard 71%, unseen 76%** (tips 11%) vs one-site 67% / 66% (tips 28%) vs
+baseline 50% / 69%. Two held-out sites (48 spawns, never trained on): both CNN arms beat
+the baseline on hard (80–85% vs 71–73%) and are level on the easier unseen routes;
+six-site vs one-site within noise. So the one-site CNN already generalised to new
+terrain; the delta's unseen segment is unusually hard. **Best configuration: six-site
+terrain CNN** (`runs/exp8_sites.sh`). Remaining gap: seed-to-seed spread.
+
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
 materials: IMU ~$25–35, bogie-angle encoders, feedback servos, a depth camera for
