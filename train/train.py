@@ -22,7 +22,7 @@ import time
 
 import torch
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 
@@ -156,14 +156,30 @@ def lr_schedule(kind, lr, steps, start_steps=0):
     return schedule
 
 
-class NormalizedCheckpoint(CheckpointCallback):
-    """CheckpointCallback that also saves the VecNormalize statistics."""
+class NormalizedCheckpoint(BaseCallback):
+    """Saves the model and its VecNormalize statistics each time training
+    crosses a multiple of `every` steps, named by that multiple
+    (ppo_400000_steps.zip + ppo_vecnormalize_400000_steps.pkl) whatever the
+    number of envs. (SB3's CheckpointCallback counts calls, so with 6 envs it
+    saved at 399984 steps and `--resume .../ppo_400000_steps.zip` found nothing.)"""
+
+    def __init__(self, every, save_path, name_prefix='ppo'):
+        super().__init__()
+        self.every, self.save_path, self.name_prefix = every, save_path, name_prefix
+        self.next = None
+
+    def _init_callback(self):
+        os.makedirs(self.save_path, exist_ok=True)
 
     def _on_step(self):
-        if self.n_calls % self.save_freq == 0:
-            self.model.get_vec_normalize_env().save(
-                os.path.join(self.save_path, f'{self.name_prefix}_vecnormalize_{self.num_timesteps}_steps.pkl'))
-        return super()._on_step()
+        if self.next is None:   # after a resume num_timesteps starts where it left off
+            self.next = (self.num_timesteps // self.every + 1) * self.every
+        if self.num_timesteps >= self.next:
+            base = os.path.join(self.save_path, self.name_prefix)
+            self.model.save(f'{base}_{self.next}_steps.zip')
+            self.model.get_vec_normalize_env().save(f'{base}_vecnormalize_{self.next}_steps.pkl')
+            self.next += self.every
+        return True
 
 
 def main():
@@ -239,8 +255,7 @@ def main():
 
     callbacks = CallbackList([
         EpisodeLogger(out, config),
-        NormalizedCheckpoint(save_freq=max(1, 100_000 // args.envs), save_path=os.path.join(out, 'checkpoints'),
-                             name_prefix='ppo'),
+        NormalizedCheckpoint(100_000, os.path.join(out, 'checkpoints')),
     ])
     t = time.time()
     model.learn(total_timesteps=args.steps, callback=callbacks, tb_log_name='ppo',
