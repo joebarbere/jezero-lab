@@ -650,6 +650,7 @@ added (cheap).
 | 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | done: **still worse** (fresh 47% / 49% vs exp5 58% / 66%); not adopted |
 | 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | done: **hard 67% vs baseline 50%** (fresh), unseen 66%; **adopted: best configuration** |
 | 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead | done: hard **72%**, unseen 60% (fresh); close alternative, not adopted |
+| 9 | `exp9_sites_full_s3/s4/s5` (+ exp8's s0–s2) | seed reliability: six seeds of the six-site CNN; checkpoints chosen on separate validation spawns (seed 2,000,000+, training sites), then measured on the test sets | running |
 | 5 | | privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)

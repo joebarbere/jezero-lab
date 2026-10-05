@@ -10,6 +10,11 @@ Each run's checkpoint (checkpoints/ppo_<N>_steps.zip, or final.zip with
 --checkpoint final) is evaluated with the observation options from its own
 config.json. Seeds for spawns are evaluate.py's held-out ones, identical for
 every policy and the baseline. Reports per seed and per arm (mean, min-max).
+
+Several --checkpoint values evaluate each run at each (results keyed
+'RUN@CKPT'); a run given as RUN@CKPT uses that checkpoint whatever --checkpoint
+says. --seed0 picks another range of spawns, e.g. a validation set kept apart
+from the test spawns (SEED0) for choosing checkpoints.
 """
 import argparse
 import json
@@ -35,22 +40,29 @@ def main():
     ap.add_argument('--world', required=True)
     ap.add_argument('--arm', nargs='+', action='append', required=True,
                     metavar=('NAME', 'RUN'), help='arm name then its run dirs')
-    ap.add_argument('--checkpoint', default='400000', help="step count, or 'final'")
+    ap.add_argument('--checkpoint', nargs='+', default=['400000'],
+                    help="step count(s), or 'final'")
+    ap.add_argument('--seed0', type=int, default=SEED0,
+                    help=f'first spawn seed (default {SEED0}, the test spawns)')
     ap.add_argument('--variants', nargs='+', default=['hard', 'unseen'])
     ap.add_argument('--episodes', type=int, default=16, help='per variant')
     ap.add_argument('--workers', type=int, default=6)
     ap.add_argument('--out')
     args = ap.parse_args()
 
-    tasks = [(v, SEED0 + i) for v in args.variants for i in range(args.episodes)]
-    groups = {}                                # obs options -> list of (arm, run, path)
+    tasks = [(v, args.seed0 + i) for v in args.variants for i in range(args.episodes)]
+    groups = {}                                # obs options -> list of (arm, key, path)
     for arm, *runs in args.arm:
-        for run in runs:
-            path = ckpt_path(run, args.checkpoint)
-            if not os.path.exists(path):
-                raise SystemExit(f'missing {path}')
-            key = tuple(sorted(obs_options(path).items()))
-            groups.setdefault(key, []).append((arm, run, path))
+        for spec in runs:
+            run, _, fixed = spec.partition('@')
+            cks = [fixed] if fixed else args.checkpoint
+            for ck in cks:
+                path = ckpt_path(run, ck)
+                if not os.path.exists(path):
+                    raise SystemExit(f'missing {path}')
+                name = f'{run}@{ck}' if fixed or len(cks) > 1 else run
+                key = tuple(sorted(obs_options(path).items()))
+                groups.setdefault(key, []).append((arm, name, path))
 
     ctx = get_context('spawn')
     results = {'baseline': None, 'runs': {}}
@@ -67,7 +79,8 @@ def main():
         with open(args.out, 'w') as f:
             json.dump(results, f, indent=1)
 
-    print(f"\n{args.world}, checkpoint {args.checkpoint}, {args.episodes} held-out spawns per variant")
+    print(f"\n{args.world}, checkpoint {' '.join(args.checkpoint)}, {args.episodes} spawns per variant "
+          f"from seed {args.seed0}")
     base = results['baseline']
     print(f"{'':28s}" + ''.join(f'{v + " goal":>14s}{v + " tip":>12s}' for v in args.variants))
     print(f"{'baseline':28s}" + ''.join(
@@ -78,7 +91,7 @@ def main():
         arms.setdefault(res['arm'], []).append((run, res['rows']))
     for arm, runs in arms.items():
         for run, rows in runs:
-            print(f"  {os.path.basename(run):26s}" + ''.join(
+            print(f"  {os.path.basename(run)[-26:]:26s}" + ''.join(
                 f"{rate([r for r in rows if r['variant'] == v], 'goal'):>14.0%}"
                 f"{rate([r for r in rows if r['variant'] == v], 'tipped'):>12.0%}" for v in args.variants))
         line = f"{arm + ' (mean, min-max)':28s}"
