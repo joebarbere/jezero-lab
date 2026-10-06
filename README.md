@@ -13,13 +13,14 @@ Mars-realistic boulder fields; a Gymnasium environment steps it deterministicall
 in-process at ~15× real time; PPO policies are trained and evaluated against a
 hand-written baseline, with path plots and chase-camera video.
 
-**Where it stands (2026-10):** with a small CNN reading the terrain grids and training
-spread across six sites along Perseverance's route, the learned policy **beats the
-hand-written baseline among boulders**: on held-out starts on the delta it reaches the
-goal 71% of the time vs 50% (76% vs 69% on the delta's hardest unseen segment) and tips
-over far less; on two sites it never trained on, it beats the baseline on the hard
-starts (80% vs 71–73%). Seed-to-seed spread is the remaining weakness. The path there,
-including the ideas that didn't work, is in [docs/decision_log.md](docs/decision_log.md).
+**Where it stands (2026-10):** the learned policy **beats the hand-written baseline on
+every test set**. It uses a small CNN over the terrain grids, trains on six sites along
+Perseverance's route, and is chosen from six seeds on a separate validation set. On
+held-out starts it reaches the goal 88% of the time on the delta among boulders (baseline
+50%) and 88–98% on the hard starts at two sites it never trained on (baseline 71–73%),
+tipping over in 0–4% of episodes vs up to 41% for the baseline. Seeds still vary a lot
+(56–84%), which is why the seed is chosen on validation. The path there, including the
+ideas that didn't work, is in [docs/decision_log.md](docs/decision_log.md).
 
 ![Baseline (left) tips over on the rocks after 31 s; the CNN policy (right) reaches the goal](docs/media/cnn_hard26_frame.png)
 

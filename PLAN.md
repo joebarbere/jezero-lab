@@ -650,7 +650,7 @@ added (cheap).
 | 6 | `exp6_la_full_s0/s1/s2` | look-ahead at full length: exp3's 400k checkpoints resumed to 1.5M with the decaying LR (mirrors exp5) | done: **still worse** (fresh 47% / 49% vs exp5 58% / 66%); not adopted |
 | 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | done: **hard 67% vs baseline 50%** (fresh), unseen 66%; **adopted: best configuration** |
 | 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead | done: hard **72%**, unseen 60% (fresh); close alternative, not adopted |
-| 9 | `exp9_sites_full_s3/s4/s5` (+ exp8's s0–s2) | seed reliability: six seeds of the six-site CNN; checkpoints chosen on separate validation spawns (seed 2,000,000+, training sites), then measured on the test sets | running |
+| 9 | `exp9_sites_full_s3/s4/s5` (+ exp8's s0–s2) | seed reliability: six seeds of the six-site CNN; checkpoints chosen on separate validation spawns (seed 2,000,000+, training sites), then measured on the test sets | done: checkpoint picking doesn't help, seed picking does; **chosen policy `exp8_sites_full_s0` @1.2M beats the baseline on all six test sets** |
 | 5 | | privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
@@ -931,6 +931,16 @@ the baseline on hard (80–85% vs 71–73%) and are level on the easier unseen r
 six-site vs one-site within noise. So the one-site CNN already generalised to new
 terrain; the delta's unseen segment is unusually hard. **Best configuration: six-site
 terrain CNN** (`runs/exp8_sites.sh`). Remaining gap: seed-to-seed spread.
+
+### Experiment 9: seed reliability (2026-10-06)
+
+Six seeds; checkpoints and seeds chosen on validation spawns (seed 2,000,000+, the six
+training sites), measured on the test sets. Validation-picked checkpoints are no better
+than final ones (pooled, ±6 points), but validation picked the best seed correctly
+(seed 0; seeds 1 and 4 worst on both). Spread: delta hard 56–84% across seeds. **Chosen
+policy `runs/exp8_sites_full_s0` @1.2M:** delta hard 88% / unseen 78%, site A 98% / 90%,
+site B 88% / 100% (baseline 50/69, 71/79, 73/96), tip-overs 0–4%. Procedure from now on:
+several seeds, choose the seed on validation, use a late checkpoint.
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of

@@ -627,6 +627,47 @@ reliability (more seeds, choosing checkpoints on validation spawns).
 > better than that test suggested. A single held-out set is a sample of one; when a
 > conclusion rests on it, get a second.
 
+### D32. Experiment 9, seed reliability: pick the seed, not the checkpoint ✓
+**Change.** Six seeds of the six-site CNN (D31). Every run's checkpoints (600k…final)
+scored on a **validation set**: new spawns (seed 2,000,000+) on the six *training* sites,
+never used for testing. Validation alone chose the best checkpoint per seed and the best
+policy overall; then everything was measured on the test sets.
+
+**Numbers** (test goal rates; delta = 32 fresh spawns, sites = 48):
+
+| | delta hard | delta unseen | site A hard / unseen | site B hard / unseen |
+|---|---|---|---|---|
+| baseline | 50% | 69% | 71% / 79% | 73% / 96% |
+| 6 seeds, final checkpoints, pooled | 71% | 70% | 80% / 91% | 77% / 87% |
+| 6 seeds, validation-picked checkpoints, pooled | 66% | 69% | 82% / 85% | 77% / 88% |
+| **chosen policy** (seed 0 @1.2M, by validation) | **88%** | **78%** | **98% / 90%** | **88% / 100%** |
+
+Seed spread: delta hard 56–84% across the six finals; seeds 1 and 4 are clearly weaker
+(seed 4: 34% delta unseen, 46% site B unseen).
+
+**Conclusions.**
+1. **Choosing checkpoints within a run doesn't help.** Validation-picked checkpoints are
+   no better than the final ones (pooled, within ±6 points either way). With a decaying
+   learning rate the late checkpoints are all similar, and 72 validation episodes can't
+   separate them (standard error ≈ 5 points).
+2. **Choosing the seed does.** Validation ranked seed 0 first (90–93%) and seeds 4 and 1
+   last, and the test agreed: seed 0 is best on every test set, seeds 1 and 4 worst.
+   Seed differences (~20 points) are big enough for validation to see.
+3. **The chosen policy beats the baseline on all six test sets**, by 4–38 points, and
+   tips over in 0–4% of episodes vs the baseline's up to 41%. This number is honest:
+   it was chosen without looking at the test spawns.
+
+**Decision.** Procedure: train several seeds, choose the seed on validation, use its
+final (or any late) checkpoint. The project's policy is **exp8_sites_full_s0 @1.2M**.
+
+> **Explainer: selection needs a signal bigger than the noise.** Choosing among
+> candidates by a noisy score works only when the real differences are larger than
+> the noise. Seeds differed by ~20 points, so a 72-episode validation set picked the
+> best one; late checkpoints of one seed differ by a few points, so the same set just
+> picked noise (and "winners" picked from noise look worse on fresh data: regression
+> to the mean). And the reason for a separate validation set: had we chosen on the
+> test spawns, the chosen policy's score would be inflated by exactly that luck.
+
 ---
 
 ## Lessons in one page
@@ -656,3 +697,5 @@ reliability (more seeds, choosing checkpoints on validation spawns).
     can make a policy worse; the right architecture made existing inputs pay off.
 14. **One test set is a sample of one** (D31): new held-out sites showed the old
     "unseen" segment was the hardest place on the map, not a typical one.
+15. **Select only where the signal beats the noise** (D32): validation picked the best
+    seed (big differences) but not the best checkpoint (small ones).
