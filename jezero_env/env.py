@@ -45,6 +45,7 @@ GOAL_PADDING = 1.0     # m: half-width of the at_destination() box
 MAX_TILT = math.radians(35)
 BUDGET_FACTOR = 2.5    # step budget = straight-line time at full speed x this
 SPAWN_ATTEMPTS = 5
+PAIR_ATTEMPTS = 20    # new start/goal pairs to try when all SPAWN_ATTEMPTS around one fail
 MIN_GOAL_DIST = 5.0    # m: jittered spawns stay at least this far from the goal
 ROUTE_GOAL_DIST = (10.0, 60.0)   # m: start-goal distance range for goal_mode='route' and 'map'
 # goal_mode='map': a region training never enters (x0, x1, y0, y1), around the
@@ -401,31 +402,38 @@ class JezeroEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        seg = int(self.np_random.choice(self.segments))
-        if self.goal_mode == 'route':
-            start, goal = self._route_pair()
-        elif self.goal_mode == 'map':
-            start, goal = self._map_pair()
-            seg = -1
-        else:
-            start, goal = self.waypoints[seg], self.waypoints[seg + 1]
-        self.segment = seg
-        self.goal = (goal['x'], goal['y'])
         # Spawn: the start waypoint, optionally jittered and/or facing a random
         # way. A rare spawn (across a steep spot) never settles; resample rather
-        # than start an episode that is already tipped.
-        for attempt in range(SPAWN_ATTEMPTS):
-            x, y = self._spawn_xy(start, goal)
-            if self.random_heading or attempt > 0:
-                yaw = float(self.np_random.uniform(-math.pi, math.pi))
+        # than start an episode that is already tipped. If every retry around
+        # one start fails (steep ground, e.g. the west rim), draw a new start
+        # and goal; spawns that settled before are unchanged.
+        for pair_try in range(PAIR_ATTEMPTS):
+            seg = int(self.np_random.choice(self.segments))
+            if self.goal_mode == 'route':
+                start, goal = self._route_pair()
+            elif self.goal_mode == 'map':
+                start, goal = self._map_pair()
+                seg = -1
             else:
-                yaw = math.atan2(goal['y'] - y, goal['x'] - x)
-            z = float(self.heightmap.sample(x, y))
-            s = self.sim.reset(spawn=(x, y, z, yaw))
-            if abs(s.roll) < MAX_TILT and abs(s.pitch) < MAX_TILT:
-                break
+                start, goal = self.waypoints[seg], self.waypoints[seg + 1]
+            for attempt in range(SPAWN_ATTEMPTS):
+                x, y = self._spawn_xy(start, goal)
+                if self.random_heading or attempt > 0:
+                    yaw = float(self.np_random.uniform(-math.pi, math.pi))
+                else:
+                    yaw = math.atan2(goal['y'] - y, goal['x'] - x)
+                z = float(self.heightmap.sample(x, y))
+                s = self.sim.reset(spawn=(x, y, z, yaw))
+                if abs(s.roll) < MAX_TILT and abs(s.pitch) < MAX_TILT:
+                    break
+            else:
+                continue
+            break
         else:
-            raise RuntimeError(f'segment {seg}: no stable spawn in {SPAWN_ATTEMPTS} tries')
+            raise RuntimeError(f'segment {seg}: no stable spawn in {PAIR_ATTEMPTS} x '
+                               f'{SPAWN_ATTEMPTS} tries')
+        self.segment = seg
+        self.goal = (goal['x'], goal['y'])
         self.spawn_attempts = attempt + 1
 
         straight = math.hypot(goal['x'] - s.x, goal['y'] - s.y)
