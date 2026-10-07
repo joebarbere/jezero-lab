@@ -42,7 +42,8 @@ def main():
     ap.add_argument('--rock-patch', action='store_true')
     ap.add_argument('--variant', default='unseen', choices=list(VARIANTS))
     ap.add_argument('--seed', type=int, default=0, help='episode index, as in evaluate.py')
-    ap.add_argument('--max-seconds', type=float, default=240.0, help='sim seconds to record at most')
+    ap.add_argument('--max-seconds', type=float, default=None,
+                    help="sim seconds to record at most (default: the episode's own time budget)")
     ap.add_argument('--speedup', type=float, default=4.0)
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
