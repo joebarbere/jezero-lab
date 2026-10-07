@@ -211,6 +211,8 @@ def main():
     ap.add_argument('--resume', help='path to a checkpoint .zip to continue from')
     ap.add_argument('--policy', default='mlp', choices=['mlp', 'cnn'],
                     help='cnn: read terrain grids through small CNNs (jezero_env.policies.TerrainCNN)')
+    ap.add_argument('--n-steps', type=int, default=512, help='rollout steps per env per update')
+    ap.add_argument('--batch-size', type=int, default=512)
     ap.add_argument('--lr', type=float, default=3e-4)
     ap.add_argument('--lr-schedule', default='constant', choices=['constant', 'linear'],
                     help='linear: decay to 0 over this run (from the resume point, if resuming)')
@@ -246,7 +248,7 @@ def main():
         venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
         model = PPO(
             'MlpPolicy', venv,
-            n_steps=512, batch_size=512, n_epochs=10,
+            n_steps=args.n_steps, batch_size=args.batch_size, n_epochs=10,
             gamma=0.99, gae_lambda=0.95, learning_rate=lr_schedule(args.lr_schedule, args.lr, args.steps),
             clip_range=0.2, ent_coef=0.0,
             policy_kwargs=policy_kwargs(args.policy, env_kwargs),
