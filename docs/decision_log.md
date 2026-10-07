@@ -668,6 +668,54 @@ final (or any late) checkpoint. The project's policy is **exp8_sites_full_s0 @1.
 > to the mean). And the reason for a separate validation set: had we chosen on the
 > test spawns, the chosen policy's score would be inflated by exactly that luck.
 
+### D33. Robustness check and experiment 10: a bigger batch makes seeds more reliable ✓
+**Robustness first.** Demo recordings of site B didn't match the evaluation: the
+recorder used PyTorch's default 6 threads, the evaluation 1, and that floating-point
+difference flipped episodes among boulders. So: are the success rates themselves
+fragile? The chosen policy (D32) was re-run on all test spawns with tiny observation
+noise (std 1e-5). 30 of 256 episodes flipped (12%), but the rates held: 89% vs 91%
+pooled, every set within sampling noise. (Running with 2 threads changed nothing at all:
+bit-identical results, so no test.)
+
+**Change.** The weak seeds (D32) were behind from the first 200k steps (41–48% training
+success vs 61%) with no sign of instability in the optimisation statistics, which
+suggests early luck. A larger batch averages over more experience per update:
+`--n-steps 1024 --batch-size 1024` (6,144 samples per update instead of 3,072, half as
+many updates), six seeds, same recipe otherwise. The six seeds of D32 are the control.
+
+**Numbers** (test goal rates, final checkpoints; mean over 6 seeds, range in brackets):
+
+| | control (D32) | bigger batch |
+|---|---|---|
+| delta hard | 71% (56–84) | **79%** (59–88) |
+| delta unseen | 70% (34–88) | **78%** (66–88) |
+| site A hard / unseen | 80% / 91% | **85%** / 89% |
+| site B hard / unseen | 77% (67–88) / 87% (46–98) | **87%** (83–92) / **90%** (88–94) |
+| **per-seed average over the 6 tests** | mean 79%, **worst 64%**, sd 9.7 | mean **85%**, **worst 74%**, sd 6.1 |
+
+Training time: about the same (≈ 2.3 h per seed).
+
+**Conclusions.** Better on 5 of 6 test sets, with the worst seed up 10 points and the
+spread down by a third. Not proof with six seeds per arm (per-seed means differ by about
+1.3 standard errors), but every summary moves the same way, at no extra cost. There's
+still one weaker seed (74%).
+
+**Decision.** Adopt `--n-steps 1024 --batch-size 1024` in the recipe. Keep choosing the
+seed on validation (D32); the chosen policy stays exp8_sites_full_s0 @1.2M (91% average
+over the tests; the best new seed averages 90%).
+
+> **Explainer: gradient noise and seed luck.** Each PPO update estimates "which way is
+> better" from a batch of experience. A small batch gives a noisy estimate, and early
+> in training, noise decides which habits the policy forms; some seeds lock into worse
+> ones and never recover. A bigger batch gives a steadier estimate at the cost of fewer
+> updates for the same experience. Here that trade paid off: same compute, fewer bad
+> seeds.
+
+> **Explainer: chaos isn't fragility.** Among boulders, a difference in the 5th decimal
+> place can decide whether one episode ends at the goal or on its side, so single
+> episodes aren't reproducible across machines or settings. Success *rates* over many
+> episodes are: they are what to report, and what to check under perturbation.
+
 ---
 
 ## Lessons in one page
@@ -699,3 +747,7 @@ final (or any late) checkpoint. The project's policy is **exp8_sites_full_s0 @1.
     "unseen" segment was the hardest place on the map, not a typical one.
 15. **Select only where the signal beats the noise** (D32): validation picked the best
     seed (big differences) but not the best checkpoint (small ones).
+16. **Report rates, not episodes** (D33): single episodes among boulders are chaotic;
+    success rates held under perturbation.
+17. **Fewer, steadier updates can beat more, noisier ones** (D33): doubling the batch
+    cut seed-to-seed spread at the same cost.

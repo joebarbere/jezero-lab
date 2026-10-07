@@ -651,6 +651,7 @@ added (cheap).
 | 7a | `exp7a_cnn_full_s0/s1/s2` | terrain CNN (`--policy cnn`: small CNNs over the terrain grids), exp5's setup and schedule | done: **hard 67% vs baseline 50%** (fresh), unseen 66%; **adopted: best configuration** |
 | 7b | `exp7b_cnnla_full_s0/s1/s2` | terrain CNN + look-ahead | done: hard **72%**, unseen 60% (fresh); close alternative, not adopted |
 | 9 | `exp9_sites_full_s3/s4/s5` (+ exp8's s0–s2) | seed reliability: six seeds of the six-site CNN; checkpoints chosen on separate validation spawns (seed 2,000,000+, training sites), then measured on the test sets | done: checkpoint picking doesn't help, seed picking does; **chosen policy `exp8_sites_full_s0` @1.2M beats the baseline on all six test sets** |
+| 10 | `exp10_bigbatch_full_s0..s5` | seed reliability: six-site CNN with `--n-steps 1024 --batch-size 1024` (6,144 samples/update), six seeds vs exp8/9's six | done: per-seed test average 85% vs 79%, worst seed 74% vs 64%, spread 6.1 vs 9.7; **adopted** |
 | 5 | | privileged critic | |
 
 ### c0_control: why it isn't the control (2026-09-29)
@@ -941,6 +942,15 @@ than final ones (pooled, ±6 points), but validation picked the best seed correc
 policy `runs/exp8_sites_full_s0` @1.2M:** delta hard 88% / unseen 78%, site A 98% / 90%,
 site B 88% / 100% (baseline 50/69, 71/79, 73/96), tip-overs 0–4%. Procedure from now on:
 several seeds, choose the seed on validation, use a late checkpoint.
+
+### Robustness and experiment 10: bigger batch (2026-10-07)
+
+Tiny observation noise flips 12% of the chosen policy's test episodes but leaves its
+rates within sampling noise (89% vs 91% pooled): report rates, not single episodes.
+Doubling the batch (`--n-steps 1024 --batch-size 1024`) over six seeds: test goal rates
+up on 5 of 6 sets (e.g. delta hard 79% vs 71%, site B hard 87% vs 77%), per-seed average
+85% vs 79%, worst seed 74% vs 64%, same training time. **Recipe now: six sites, terrain
+CNN, decaying LR, 6,144-sample batches, several seeds chosen on validation.**
 
 **Sensor policy (decided 2026-09-29):** any input a buyable sensor could provide
 is allowed; each is tagged with the hardware it implies (the running bill of
