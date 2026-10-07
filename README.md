@@ -87,6 +87,12 @@ factor, forward speed, and rotate-in-place against sim time
 ([tools/bench.py](tools/bench.py)). [tools/drive_test.py](tools/drive_test.py) drives
 straight on whatever world is running and logs position and tilt.
 
+### Talk to the rover (ROSA)
+
+[rosa/](rosa/README.md) connects NASA-JPL's [ROSA](https://github.com/nasa-jpl/rosa)
+LLM agent, with Claude, to the simulated rover: "drive to the nearest waypoint",
+"which controllers are running?". `ANTHROPIC_API_KEY=... rosa/run.sh --gui`.
+
 ## Gym environment
 
 ```python

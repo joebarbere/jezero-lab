@@ -51,6 +51,12 @@ def main():
         or {'rock_patch': args.rock_patch}
     env = JezeroEnv(world=args.world, **obs, camera=True,
                     max_episode_seconds=args.max_seconds, **VARIANTS[args.variant])
+    # One torch thread, as in evaluate.py: the thread count changes the CNN's
+    # floating-point results slightly, and among boulders that can flip an
+    # episode (heldout_margin hard:22 tips at 48 s with 6 threads, reaches the
+    # goal with 1), so recordings would not match the evaluation.
+    import torch
+    torch.set_num_threads(1)
     act = baseline_policy if args.controller == 'baseline' else load_policy(args.controller)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

@@ -1,0 +1,7 @@
+# ROSA (NASA-JPL's LLM agent for ROS) on top of the Jazzy + Harmonic image, in a
+# venv that still sees the system ROS packages (rclpy etc.).
+FROM localhost/jezero-lab:jazzy-harmonic
+RUN apt-get update && apt-get install -y --no-install-recommends python3-venv && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv --system-site-packages /opt/rosa \
+ && /opt/rosa/bin/pip install --no-cache-dir jpl-rosa langchain-anthropic
+ENV PATH=/opt/rosa/bin:$PATH
