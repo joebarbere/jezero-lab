@@ -22,6 +22,8 @@ tipping over in 0–4% of episodes vs up to 41% for the baseline. Seeds still va
 (56–84%), which is why the seed is chosen on validation. The path there, including the
 ideas that didn't work, is in [docs/decision_log.md](docs/decision_log.md).
 
+Short version with results, a pipeline diagram and next steps: [docs/writeup.md](docs/writeup.md).
+
 ![Baseline (left) tips over on the rocks after 31 s; the CNN policy (right) reaches the goal](docs/media/cnn_hard26_frame.png)
 
 ## Setup
