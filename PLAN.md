@@ -981,6 +981,25 @@ can provide (contacts, true slip, exact rock distances) go to the critic only.
 
 ---
 
+## Next steps (recorded 2026-10-10)
+
+Where things stand: the chosen policy (`runs/exp8_sites_full_s0` @1.2M) beats the
+baseline on all six test sets (decision log D32); the recipe is six sites, terrain
+CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D33).
+
+- [ ] **Push the batch further:** `--n-steps 2048 --batch-size 2048` (12,288 samples per
+      update), six seeds, compared with the 1x (exp8/9) and 2x (exp10) arms (~10 h).
+- [ ] **Pick from the exp10 seeds too:** score them on validation (`eval.compare
+      --seed0 2000000`, `eval.select_checkpoint`); replace the chosen policy if one beats it.
+- [ ] **Try the ROSA agent in conversation** (`rosa/run.sh`, needs `ANTHROPIC_API_KEY`),
+      then shape it into a small example for the OSR community.
+- [ ] **Follow up upstream:** review on PR #230; send the Harmonic port
+      (`feature/gazebo-harmonic`) once #228 gets a reply; #229 open.
+- [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
+      wheel contacts and slip, for the value function only) and a tilt-rate penalty.
+- [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
+      pitch), then plan a sim-to-real test.
+
 ## Repo layout
 
 ```
