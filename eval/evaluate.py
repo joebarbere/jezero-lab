@@ -99,13 +99,16 @@ def _vecnormalize_path(model_path):
 
 def _episode(task):
     variant, seed, controller = task[:3]
-    model_path = task[3] if len(task) > 3 else None
+    model_path = task[3] if len(task) > 3 and controller == 'policy' else None
     from jezero_env.baseline import policy as baseline_policy
     for k, v in VARIANTS[variant].items():
         setattr(_env, k, v)
     obs, info = _env.reset(seed=seed)
     if controller == 'baseline':
         act = baseline_policy
+    elif controller == 'avoid':                 # task[3]: make_avoid_policy kwargs
+        from jezero_env.baseline import make_avoid_policy
+        act = make_avoid_policy(**task[3])
     else:
         act = _get_policy(model_path) if model_path else _policy
     total = 0.0

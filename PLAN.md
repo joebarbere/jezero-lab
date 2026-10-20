@@ -1038,14 +1038,21 @@ same observation** (coarse 7×7 + fine 9×9 patch, nothing else) to avoid rocks,
 much of the gap is left.
 
 **Controller (`jezero_env/baseline.py`, `avoid_policy`).** Deterministic, no state, no
-learning. Fit a plane to the fine patch and treat height above it as rock. Score nine
+learning. Fit a plane to the fine patch and treat height above it as rock (*amended before any run:*
+refit without the points more than `h_rock` above the fit, twice; a synthetic check showed a
+large boulder tilting a plain least-squares plane enough to hide itself). Score nine
 constant-curvature arcs (radius ±0.45, ±0.8, ±1.5, ±3 m and straight; 0.45 m is the
 rover's minimum radius), each L metres long, by the clear distance before any point within
 ±0.25 m of the arc (the rover's half-width) rises more than `h_rock` above the plane, and by
 the heading error to the goal at the arc's end:
 cost = |heading error at end| / π + `k_block` × (1 − clear / L). Drive the cheapest arc,
 at the old baseline's speed rule (cos error, 0.2–1), halved if the arc is not fully clear.
-If no arc is clear for 0.35 m, reverse straight at half speed.
+If no arc is clear for 0.35 m, reverse straight at half speed. *Amended before any run:* a
+stall escape. Smoke spawns (seed 3,000,000+, neither validation nor test) showed the rover
+high-centred on a rock under its own centre, every arc clear, wheels spinning for 10 minutes.
+If the goal distance hasn't improved by 0.25 m in 10 s: reverse 2 s at half speed, then 3 s
+on the clearest arc turning the other way from the last choice, then resume. Fixed
+constants, not tuned.
 
 **Tuning: validation only.** A fixed grid of 12 settings, `h_rock` ∈ {0.08, 0.12, 0.16} m ×
 L ∈ {1.2, 1.6} m × `k_block` ∈ {1, 3}, each scored on the D32 validation spawns (seed
