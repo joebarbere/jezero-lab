@@ -1022,10 +1022,57 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
 - [x] **Upstream PR #230 merged** (2026-10-20, `b874497`); submodule bumped to it.
 - [ ] **Follow up upstream:** send the Harmonic port (`feature/gazebo-harmonic`) once #228
       gets a reply; #229 open.
+- [ ] **Experiment 11, a rock-avoiding baseline** (below): protocol frozen, in progress.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
       pitch), then plan a sim-to-real test.
+
+## Experiment 11: a rock-avoiding baseline (protocol frozen 2026-10-20, before any run)
+
+**Why.** The project's headline (D32) compares the policy with a baseline that turns toward
+the goal and drives, blind to rocks. The policy sees the 9×9 fine patch at 0.4 m; the
+baseline ignores it. A gap measured against a controller that can't see the hazards says
+little about learning. This experiment builds a hand-written controller that uses **the
+same observation** (coarse 7×7 + fine 9×9 patch, nothing else) to avoid rocks, and asks how
+much of the gap is left.
+
+**Controller (`jezero_env/baseline.py`, `avoid_policy`).** Deterministic, no state, no
+learning. Fit a plane to the fine patch and treat height above it as rock. Score nine
+constant-curvature arcs (radius ±0.45, ±0.8, ±1.5, ±3 m and straight; 0.45 m is the
+rover's minimum radius), each L metres long, by the clear distance before any point within
+±0.25 m of the arc (the rover's half-width) rises more than `h_rock` above the plane, and by
+the heading error to the goal at the arc's end:
+cost = |heading error at end| / π + `k_block` × (1 − clear / L). Drive the cheapest arc,
+at the old baseline's speed rule (cos error, 0.2–1), halved if the arc is not fully clear.
+If no arc is clear for 0.35 m, reverse straight at half speed.
+
+**Tuning: validation only.** A fixed grid of 12 settings, `h_rock` ∈ {0.08, 0.12, 0.16} m ×
+L ∈ {1.2, 1.6} m × `k_block` ∈ {1, 3}, each scored on the D32 validation spawns (seed
+2,000,000+, hard variant, 12 per site on the six training sites, 72 episodes). The setting
+with the highest validation goal rate wins (ties: fewer tip-overs, then the smaller
+`h_rock`). No other parameter is tuned, and the test spawns are not opened until the setting
+is chosen.
+
+**Sanity gate (validation).** The chosen setting must beat the old baseline's validation
+goal rate on the same 72 spawns. If it doesn't, it isn't a stronger baseline: stop and
+report. One redesign is allowed after a failed gate, recorded here as post hoc; no more.
+
+**Test, once.** The chosen setting on the six D32 test sets with identical spawns (delta:
+the 32 fresh spawns per variant; sites A and B: 48), against the chosen policy's committed
+rows (`runs/test_exp9_*.json`, `exp8_sites_full_s0@1200000`). The upstream bump (above)
+leaves those rows valid: driving is bit-identical.
+
+**Reading the result (frozen).**
+- Primary statistic: the pooled goal rate over all six sets (256 paired spawns), policy vs
+  rock-avoiding baseline, with an exact two-sided McNemar test on the discordant spawns.
+- Per-set rates are reported with counts; with 32–48 spawns (SE ≈ 7–9 points), no per-set
+  claim beyond its direction.
+- Policy ahead pooled at p < 0.05: "the policy beats a rock-avoiding baseline by X points",
+  and the write-up names both baselines. Not significant: the margin over a rock-aware
+  baseline is not established, and the write-up's headline says so. Baseline ahead: report it
+  as the result.
+- Tip-over rates are reported alongside; they are not part of the decision.
 
 ## Repo layout
 
