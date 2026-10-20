@@ -81,7 +81,7 @@ For training-style throughput:
 ```bash
 containers/bench.sh jazzy-harmonic osr_gz sim.launch.py gui:=false realtime:=false
 # == jazzy-harmonic: ...
-# rtf=14.61 speed=0.298m/s(cmd 0.3) rotate: dyaw=-112.1deg/4s drift=7.3cm
+# rtf=14.79 speed=0.303m/s(cmd 0.3) rotate: dyaw=-115.5deg/4s drift=5.5cm
 ```
 
 Starts a headless container, waits for the controllers, then measures real-time

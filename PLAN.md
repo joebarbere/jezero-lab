@@ -981,6 +981,32 @@ can provide (contacts, true slip, exact rock distances) go to the critic only.
 
 ---
 
+### Upstream bump to `b874497` (2026-10-20)
+
+The submodule moves from `6b17c22` to `b874497` (master, 2026-10-20). Two upstream commits:
+
+- `b874497`, our PR #230: wheel friction through `<gazebo reference>` mu1/mu2 = 0.7. Only
+  upstream's Classic `osr_gazebo` changes; `osr_gz` already applied friction this way
+  (`wheel_mu:=`), so the jezero sims are unchanged.
+- `8bbce8a`, PR #232 (not ours): rotate-in-place used d2 for the left-back and d3 for the
+  right-front corner, swapped; the front corners now use d3 (0.274 m) and the back d2
+  (0.310 m), so those two corners turn about 3° differently. `jezero_env/sim.py` calls this
+  directly. The RL action never rotates in place (`angular_z` only).
+
+Measured, old image (`6b17c22`) against new (`b874497`), same commands:
+
+| Check | `6b17c22` | `b874497` |
+|---|---|---|
+| `bench.sh`, 3 runs: rotate, 4 s | −109.3, −114.5, −113.9° | −109.2, −111.4, −115.5° |
+| `bench.sh`, 3 runs: drift | 6.3, 7.7, 6.7 cm | 4.1, 6.4, 5.5 cm |
+| `bench.sh`, 3 runs: forward (0.3 cmd) | 0.297–0.301 m/s | 0.298–0.303 m/s |
+| `selftest`: rotate, 4 s | −111.2° | −112.4° |
+| `selftest`: reset-determinism episode | (+0.4208, −0.0933, yaw +0.7915) | identical |
+
+Rotate rate doesn't change beyond run-to-run scatter; drift may be a little lower, but
+three runs each overlap. The driving episode is bit-identical, so the trained policies and
+every experiment above stand without re-running.
+
 ## Next steps (recorded 2026-10-10)
 
 Where things stand: the chosen policy (`runs/exp8_sites_full_s0` @1.2M) beats the
@@ -993,8 +1019,9 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
       --seed0 2000000`, `eval.select_checkpoint`); replace the chosen policy if one beats it.
 - [ ] **Try the ROSA agent in conversation** (`rosa/run.sh`, needs `ANTHROPIC_API_KEY`),
       then shape it into a small example for the OSR community.
-- [ ] **Follow up upstream:** review on PR #230; send the Harmonic port
-      (`feature/gazebo-harmonic`) once #228 gets a reply; #229 open.
+- [x] **Upstream PR #230 merged** (2026-10-20, `b874497`); submodule bumped to it.
+- [ ] **Follow up upstream:** send the Harmonic port (`feature/gazebo-harmonic`) once #228
+      gets a reply; #229 open.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and

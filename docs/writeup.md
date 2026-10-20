@@ -61,7 +61,7 @@ Most of the progress came from testing honestly, not from clever additions.
 
 Two pieces reach beyond the RL policy: fixes offered back to the OSR project, and a natural-language demo.
 
-- **OSR upstream.** Building the simulator turned up real bugs in [osr-rover-code](https://github.com/nasa-jpl/osr-rover-code)'s Gazebo setup. [PR #230](https://github.com/nasa-jpl/osr-rover-code/pull/230) applies wheel friction correctly (open, last reply 2026-10-01). [Issue #229](https://github.com/nasa-jpl/osr-rover-code/issues/229) reports a wheel-radius mismatch that makes the sim drive about 9% fast. [Issue #228](https://github.com/nasa-jpl/osr-rover-code/issues/228) proposes moving to Gazebo Harmonic; a working port is ready on a branch, held until the maintainer answers. No replies on the issues yet.
+- **OSR upstream.** Building the simulator turned up real bugs in [osr-rover-code](https://github.com/nasa-jpl/osr-rover-code)'s Gazebo setup. [PR #230](https://github.com/nasa-jpl/osr-rover-code/pull/230), which applies wheel friction correctly, was merged on 2026-10-20, and jezero-lab now pins that commit. [Issue #229](https://github.com/nasa-jpl/osr-rover-code/issues/229) reports a wheel-radius mismatch that makes the sim drive about 9% fast. [Issue #228](https://github.com/nasa-jpl/osr-rover-code/issues/228) proposes moving to Gazebo Harmonic; a working port is ready on a branch, held until the maintainer answers. No replies on the issues yet.
 - **Talk to the rover.** [ROSA](https://github.com/nasa-jpl/rosa), NASA-JPL's LLM agent for ROS, now drives the simulated rover with Claude: "drive to the nearest waypoint", "which controllers are running?". Its rover tools stop on their own past 25° of tilt. The tools are tested against the simulator; a conversation with the agent hasn't been tried yet (it needs an API key).
 - **Not adopted after review:** GRPO and its credit-assignment fixes (built for LLMs; our small critic already does that job), Jev (a classification API, not a controller) and SPOC-Lite (a dormant 2017 terrain classifier for camera images).
 
@@ -72,7 +72,7 @@ The best next lever is making every seed good, so a single training run is enoug
 - [ ] **Push the batch further:** 4× the original (12,288 samples per update), six seeds, compared with the 1× and 2× arms (about 10 h).
 - [ ] **Pick from the new seeds too:** score the six bigger-batch seeds on validation; replace the chosen policy if one beats it.
 - [ ] **Try the ROSA agent in conversation** ([rosa/](../rosa/README.md)) with an API key, then shape it into a small example for the OSR community.
-- [ ] **Follow up upstream:** answer review on PR #230; send the Harmonic port once #228 gets a reply.
+- [ ] **Follow up upstream:** send the Harmonic port once #228 gets a reply.
 - [ ] **Remaining training ideas:** a critic that sees simulation-only facts during training (wheel contacts, slip), and a tilt-rate penalty aimed at the last tip-overs.
 - [ ] **Toward the real rover:** add an IMU to the physical OSR (the policy uses roll and pitch) and plan a sim-to-real test.
 
