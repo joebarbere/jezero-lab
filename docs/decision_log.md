@@ -763,6 +763,46 @@ edge on hard starts is real, needs more test spawns (frozen before they're run).
 > data. Giving a hand-written controller the same data separates them. Here, most of the
 > margin was the data.
 
+### D35. Experiment 12: no hard-start advantage on fresh spawns
+**Change.** D34 left one possible edge for the policy: hard starts (on D32's test spawns,
+policy-only 23 vs avoid-only 10 of 128). That comparison is what raised the question, so it
+was re-asked on **600 new hard spawns** (seeds 4,000,000+, 200 per test world), with both
+controllers fixed (D32's policy, D34's baseline setting) and the test sized in advance
+(~76% power for a true 5-point gap). Protocol in PLAN.md, written before the run.
+
+**Numbers:**
+
+| Hard starts, fresh spawns | rock-avoiding baseline | policy | tip-overs (avoid / policy) |
+|---|---|---|---|
+| delta (200) | **91%** | 84% | 10 / 12 |
+| site A, held-out upper (200) | 80% | **86%** | 5 / 7 |
+| site B, held-out margin (200) | **94%** | 90% | 4 / 6 |
+| **pooled (600)** | **88.7%** | 86.8% | 19 / 25 |
+
+Discordant: policy-only 53, avoid-only 64. Gap −1.8 points (95% −5.4 to +1.7), exact
+McNemar **p = 0.36**.
+
+**Conclusions.**
+1. **No hard-start advantage shown.** If the policy is better on hard starts at all, it is
+   by at most about 2 points; the rock-avoiding baseline is nominally ahead.
+2. **D32's hard-start numbers were partly luck.** The same policy reaches 84–90% here, against
+   88–98% on D32's 32–48 test spawns per set (site A hard 98% → 86%). Small test sets gave
+   honest but noisy numbers, and the biggest of them suggested the question that this
+   answers.
+3. **Tip-overs are similar** (19 vs 25 of 600).
+
+**Decision.** The project's headline: a learned policy and a hand-written rock-avoiding
+controller perform the same on these tasks, within ~2–5 points. The learning pipeline works
+(it found good driving from rewards alone), but **the trained policy is not better than a
+simple controller given the same terrain data.** Further RL experiments should be measured
+against the rock-avoiding baseline, not the rock-blind one.
+
+> **Explainer: why re-test on fresh data.** When you look at several comparisons and pick
+> the one with the biggest difference to follow up, that difference is inflated by
+> whatever luck made it stand out (the winner's curse). Re-measuring it on new data, with
+> the size of test decided in advance, removes that luck. Here the 13-point hard-start lead
+> shrank to −2.
+
 ---
 
 ## Lessons in one page

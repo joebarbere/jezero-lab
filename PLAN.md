@@ -1024,7 +1024,8 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
       gets a reply; #229 open.
 - [x] **Experiment 11, a rock-avoiding baseline** (below, D34): the policy's pooled lead
       falls from 16 points to 5, p = 0.11, not established.
-- [ ] **Experiment 12, hard starts at n = 600** (below): protocol frozen, in progress.
+- [x] **Experiment 12, hard starts at n = 600** (below, D35): no advantage; gap −1.8 points
+      (95% −5.4 to +1.7), p = 0.36.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
@@ -1132,6 +1133,19 @@ question), so the test is sized for less.
   √(b + c − (b − c)²/n)/n.
 - No other comparison is promoted to a claim, and the experiment-11 numbers are not pooled
   in.
+
+**Result (2026-10-20, D35).**
+
+| Hard starts, fresh spawns | rock-avoiding baseline | policy | tip-overs (avoid / policy) |
+|---|---|---|---|
+| delta (200) | **91%** | 84% | 10 / 12 |
+| site A, held-out upper (200) | 80% | **86%** | 5 / 7 |
+| site B, held-out margin (200) | **94%** | 90% | 4 / 6 |
+| **pooled (600)** | **88.7%** | 86.8% | 19 / 25 |
+
+Policy-only 53, avoid-only 64; gap −1.8 points (95% −5.4 to +1.7), McNemar p = 0.355.
+**No hard-start advantage shown at this size**; the most the data allow is +1.7 points for
+the policy. Local output: `runs/exp12_hard.json`.
 
 ## Repo layout
 
