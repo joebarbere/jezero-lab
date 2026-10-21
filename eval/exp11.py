@@ -2,6 +2,8 @@
 
     jezero_env/run.sh python3 -m eval.exp11 val  --out runs/exp11_val.json
     jezero_env/run.sh python3 -m eval.exp11 test --val runs/exp11_val.json --out runs/exp11_test.json
+    jezero_env/run.sh python3 -m eval.exp11 hard12 --val runs/exp11_val.json --episodes 200 \
+        --out runs/exp12_hard.json      # experiment 12
 
 val: the frozen 12-setting grid, plus the old baseline, on the D32 validation
 spawns (seed 2,000,000+, hard, 12 per training site). Picks the setting by
@@ -120,9 +122,50 @@ def test(args):
     return out
 
 
+HARD12_SEED0, HARD12_N = 4_000_000, 200
+POLICY_CKPT = 'runs/exp8_sites_full_s0/checkpoints/ppo_1200000_steps.zip'
+
+
+def hard12(args):
+    """Experiment 12 (PLAN.md): fixed policy vs fixed baseline on 600 fresh hard spawns."""
+    params = json.load(open(args.val))['chosen']
+    out = {'chosen': params, 'policy': POLICY_CKPT, 'worlds': {}}
+    pooled = []
+    for world in TEST_WORLDS:
+        seeds = [HARD12_SEED0 + i for i in range(args.episodes)]
+        tasks = ([('hard', s, 'avoid', params) for s in seeds]
+                 + [('hard', s, 'policy', POLICY_CKPT) for s in seeds])
+        rows = _run(world, tasks, args.workers)
+        avoid, pol = rows[:len(seeds)], rows[len(seeds):]
+        pairs = [dict(seed=s, avoid=a['event'], policy=p['event'], avoid_row=a, policy_row=p)
+                 for s, a, p in zip(seeds, avoid, pol)]
+        out['worlds'][world] = pairs
+        pooled += pairs
+        print(f'tested {world}', flush=True)
+    print(f"{'world':40s} {'n':>4s} {'avoid':>6s} {'policy':>7s}  tips avoid/policy")
+    for world, ps in out['worlds'].items():
+        print(f"{world:40s} {len(ps):4d} {sum(p['avoid'] == 'goal' for p in ps) / len(ps):6.0%} "
+              f"{sum(p['policy'] == 'goal' for p in ps) / len(ps):7.0%}  "
+              f"{sum(p['avoid'] == 'tipped' for p in ps)}/{sum(p['policy'] == 'tipped' for p in ps)}")
+    n = len(pooled)
+    b = sum(p['policy'] == 'goal' and p['avoid'] != 'goal' for p in pooled)
+    c = sum(p['avoid'] == 'goal' and p['policy'] != 'goal' for p in pooled)
+    diff = (b - c) / n
+    half = 1.96 * math.sqrt(b + c - (b - c) ** 2 / n) / n
+    out['pooled'] = dict(n=n, policy=sum(p['policy'] == 'goal' for p in pooled) / n,
+                         avoid=sum(p['avoid'] == 'goal' for p in pooled) / n,
+                         policy_only=b, avoid_only=c, diff=diff, ci=[diff - half, diff + half],
+                         p=mcnemar(b, c))
+    m = out['pooled']
+    print(f"pooled n={n}: policy {m['policy']:.1%}, avoid {m['avoid']:.1%}; policy-only {b} / "
+          f"avoid-only {c}; gap {diff:+.1%} (95% {m['ci'][0]:+.1%} to {m['ci'][1]:+.1%}), "
+          f"McNemar p = {m['p']:.3g}")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=('val', 'test', 'smoke'))
+    ap.add_argument('mode', choices=('val', 'test', 'smoke', 'hard12'))
     ap.add_argument('--val', help='test: the val output')
     ap.add_argument('--worlds', nargs='+', default=list(SITES))
     ap.add_argument('--episodes', type=int, default=VAL_EPISODES)
@@ -136,7 +179,7 @@ def main():
         for r in rows:
             print(r['controller'], r['event'], f"{r['sim_time']:.0f}s", f"{r['final_dist']:.1f}m")
         return
-    out = val(args) if args.mode == 'val' else test(args)
+    out = {'val': val, 'test': test, 'hard12': hard12}[args.mode](args)
     if args.out:
         with open(args.out, 'w') as f:
             json.dump(out, f, indent=1)
