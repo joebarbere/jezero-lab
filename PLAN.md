@@ -1097,7 +1097,7 @@ broken by tip-overs as frozen). Test, run once:
 | **pooled (256)** | 75% | 86% | **91%** | 38 / 6 / 6 |
 
 Discordant: policy-only 30, avoid-only 18; exact McNemar p = 0.111. **Not significant: the
-policy's margin over a rock-aware baseline is not established** (frozen reading). Committed
+policy's margin over a rock-aware baseline is not established** (frozen reading). Local
 outputs: `runs/exp11_val.json`, `runs/exp11_test.json` (gitignored, like all of `runs/`).
 
 ## Repo layout
