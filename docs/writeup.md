@@ -98,7 +98,7 @@ Two pieces reach beyond the RL policy: fixes offered back to the OSR project, an
 
 ## Next steps
 
-The best next lever is making every seed good, so a single training run is enough; the batch result points that way.
+The first question now is whether learning can beat the rock-avoiding controller at all; making every seed good (the batch result) matters only if it can.
 
 - [ ] **Measure everything against the rock-avoiding baseline** (D34, D35): a training change only counts if it beats that controller, not the rock-blind one. The realistic-sensing test (the policy's terrain data is perfect and all-round) applies to both.
 - [ ] **Push the batch further:** 4× the original (12,288 samples per update), six seeds, compared with the 1× and 2× arms (about 10 h).
