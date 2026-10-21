@@ -1024,6 +1024,7 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
       gets a reply; #229 open.
 - [x] **Experiment 11, a rock-avoiding baseline** (below, D34): the policy's pooled lead
       falls from 16 points to 5, p = 0.11, not established.
+- [ ] **Experiment 12, hard starts at n = 600** (below): protocol frozen, in progress.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
@@ -1099,6 +1100,38 @@ broken by tip-overs as frozen). Test, run once:
 Discordant: policy-only 30, avoid-only 18; exact McNemar p = 0.111. **Not significant: the
 policy's margin over a rock-aware baseline is not established** (frozen reading). Local
 outputs: `runs/exp11_val.json`, `runs/exp11_test.json` (gitignored, like all of `runs/`).
+
+## Experiment 12: is the policy's edge on hard starts real? (protocol frozen 2026-10-20, before any run)
+
+**Why.** In experiment 11 the policy led the rock-avoiding baseline on the hard starts
+(pooled over the three test worlds: 30 vs 18 discordant overall; on hard starts alone,
+policy-only 23, avoid-only 10 of 128) but not significantly, and that comparison is the one
+that suggested the question. So this tests it on **new spawns**, sized in advance.
+
+**Fixed, nothing tuned.** The policy is D32's choice (`exp8_sites_full_s0` @1.2M); the
+baseline is experiment 11's validation choice (`h_rock` 0.08, L 1.2, `k_block` 3). Neither
+changes, whatever this shows.
+
+**Spawns.** Hard variant only (random heading, 10 m jitter, segments 0–2), **200 per test
+world** (delta, held-out upper = site A, held-out margin = site B), seeds 4,000,000–
+4,000,199. Never used: test is 1,000,000+, validation 2,000,000+, smoke 3,000,000+. Same
+spawns for both controllers.
+
+**Size.** From experiment 11's hard starts (25.8% discordant), an exact McNemar test on 600
+paired spawns has ~76% power for a true 5-point gap and >99% for 8 points (simulated). The
+11-point gap seen in experiment 11 is likely an overestimate (it is what raised the
+question), so the test is sized for less.
+
+**Reading (frozen).**
+- Primary: pooled over the 600, policy vs baseline goal rate, exact two-sided McNemar.
+- p < 0.05 with the policy ahead: "on hard starts the policy beats a rock-aware baseline by
+  X points" (with the interval). Otherwise: "no hard-start advantage shown at this size",
+  and quote the upper end of the 95% interval on the gap as the most the data allow.
+- Per world: rates with counts, direction only.
+- 95% interval on the paired difference: Wald on the discordant counts, (b − c)/n ± 1.96
+  √(b + c − (b − c)²/n)/n.
+- No other comparison is promoted to a claim, and the experiment-11 numbers are not pooled
+  in.
 
 ## Repo layout
 
