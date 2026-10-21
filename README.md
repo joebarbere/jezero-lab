@@ -13,8 +13,9 @@ Mars-realistic boulder fields; a Gymnasium environment steps it deterministicall
 in-process at ~15× real time; PPO policies are trained and evaluated against a
 hand-written baseline, with path plots and chase-camera video.
 
-**Where it stands (2026-10):** the learned policy **beats the hand-written baseline on
-every test set**. It uses a small CNN over the terrain grids, trains on six sites along
+**Where it stands (2026-10):** the learned policy **beats the rock-blind hand-written
+baseline on every test set**, but a hand-written controller that sees the same rocks comes
+within 5 points pooled (86% vs 91%, p = 0.11, not established; decision log D34). It uses a small CNN over the terrain grids, trains on six sites along
 Perseverance's route, and is chosen from six seeds on a separate validation set. On
 held-out starts it reaches the goal 88% of the time on the delta among boulders (baseline
 50%) and 88–98% on the hard starts at two sites it never trained on (baseline 71–73%),

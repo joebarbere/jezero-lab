@@ -2,11 +2,13 @@
 
 Joe Barbere · October 10, 2026
 
-A reinforcement-learning policy for NASA-JPL's Open Source Rover now beats a hand-written go-to-goal controller on every test set: 88% vs 50% goal rate among boulders on the Jezero delta, and 88–98% vs 71–73% on the hard starts at two sites it never trained on, while tipping over in 0–4% of episodes. Everything runs locally on one desktop (12 CPU cores, no GPU).
+A reinforcement-learning policy for NASA-JPL's Open Source Rover reaches the goal on 91% of held-out starts among boulders at three Jezero sites, two of which it never trained on, while tipping over in 0–4% of episodes. That beats a hand-written go-to-goal controller that can't see rocks (75%), but a hand-written controller given the same rock data reaches 86%, and the policy's 5-point lead over it is not statistically established (p = 0.11). Everything runs locally on one desktop (12 CPU cores, no GPU).
+
+*Updated 2026-10-20 with experiment 11 (decision log D34); the original version reported only the rock-blind baseline.*
 
 ## Results
 
-The chosen policy reaches the goal more often than the baseline on all six test sets, by 4 to 38 points. It was picked on a separate validation set, so the test numbers aren't inflated by selection.
+The chosen policy reaches the goal more often than the rock-blind baseline on all six test sets, by 4 to 38 points. It was picked on a separate validation set, so the test numbers aren't inflated by selection. A second, rock-avoiding baseline (experiment 11, below) closes most of that gap.
 
 | Test set | Baseline goal rate | Policy goal rate | Baseline tip-overs | Policy tip-overs |
 | --- | --- | --- | --- | --- |
@@ -18,6 +20,20 @@ The chosen policy reaches the goal more often than the baseline on all six test 
 | Site B, unseen routes | 96% | **100%** | 0% | 0% |
 
 Delta: 32 fresh starts per test; sites A and B: 48 per test. "Hard" starts face a random direction up to 10 m from the route among Mars-realistic boulder fields. The baseline turns toward the goal and drives. Tiny observation noise flips 12% of individual episodes, but the rates stay within sampling noise (89% vs 91% pooled), so they describe the policy, not one exact run.
+
+**Against a baseline that sees the rocks** (experiment 11). The baseline above ignores the terrain the policy sees. A second hand-written controller uses the same fine terrain patch to pick a rock-free arc toward the goal, tuned only on the validation set and run once on the same test spawns:
+
+| Test set | Rock-blind baseline | Rock-avoiding baseline | Policy |
+| --- | --- | --- | --- |
+| Delta, hard starts | 50% | 78% | **88%** |
+| Delta, unseen segment | 69% | **91%** | 78% |
+| Site A, hard | 71% | 77% | **98%** |
+| Site A, unseen routes | 79% | 85% | **90%** |
+| Site B, hard | 73% | **88%** | **88%** |
+| Site B, unseen routes | 96% | 98% | **100%** |
+| **All 256 starts** | 75% | 86% | **91%** |
+
+The policy is ahead pooled, but by 5 points rather than 16, and that difference is not statistically established (paired test, p = 0.11). Avoiding rocks also brings tip-overs down from 38 to 6, the same as the policy. Most of the original margin came from using the rock data at all, not from learning.
 
 ## How it works
 
@@ -42,6 +58,7 @@ Four changes made the difference: varied training worlds, a decaying learning ra
 | 8 | Train on six sites along Perseverance's route, not one | 71% / 76% | Adopted |
 | 9 | Six seeds; choose the seed on a validation set | Chosen policy 88% / 78% | Adopted procedure |
 | 10 | Batch doubled to 6,144 samples per update | Per-seed average 85% vs 79%; worst seed 74% vs 64% | Adopted |
+| 11 | A second baseline that avoids rocks with the same terrain data | 78% / 91%; pooled over all tests 86% vs the policy's 91% (p = 0.11) | Headline revised |
 
 Rows 5–8 and 10 are means over seeds on 32 fresh starts; row 9 is the single chosen policy. Earlier rows were short 400k-step screens whose exact numbers aren't comparable, so only the direction is shown. The full reasoning, with numbers and an explainer for each step, is in the [decision log](decision_log.md) (D1–D33).
 
@@ -55,6 +72,7 @@ Most of the progress came from testing honestly, not from clever additions.
 - **One test set is a sample of one.** New held-out sites showed the old "unseen" segment was the hardest place on the map, not a typical one.
 - **Keep choosing and reporting separate.** Validation picked the seed; the test sets were only used to report. Validation could pick seeds (big differences) but not checkpoints (small ones).
 - **Report rates, not episodes.** Among boulders a fifth-decimal difference flips single episodes; success rates held under perturbation.
+- **A baseline is only as good as what it can see.** The first baseline was blind to rocks; a hand-written one given the same rock data closed most of the gap.
 - **Steadier updates beat more updates.** Doubling the batch cut seed spread at the same cost.
 
 ## Side work

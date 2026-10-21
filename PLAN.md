@@ -1022,7 +1022,8 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
 - [x] **Upstream PR #230 merged** (2026-10-20, `b874497`); submodule bumped to it.
 - [ ] **Follow up upstream:** send the Harmonic port (`feature/gazebo-harmonic`) once #228
       gets a reply; #229 open.
-- [ ] **Experiment 11, a rock-avoiding baseline** (below): protocol frozen, in progress.
+- [x] **Experiment 11, a rock-avoiding baseline** (below, D34): the policy's pooled lead
+      falls from 16 points to 5, p = 0.11, not established.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
@@ -1080,6 +1081,24 @@ leaves those rows valid: driving is bit-identical.
   baseline is not established, and the write-up's headline says so. Baseline ahead: report it
   as the result.
 - Tip-over rates are reported alongside; they are not part of the decision.
+
+**Result (2026-10-20, D34).** Validation: chosen `h_rock` 0.08, L 1.2, `k_block` 3 (82% goal,
+6% tipped) vs the old baseline's 67% (25%), gate passed (tied at 82% with `h0.12_L1.2_k1`,
+broken by tip-overs as frozen). Test, run once:
+
+| Test set | old baseline | rock-avoiding baseline | policy | tip-overs (old / avoid / policy) |
+|---|---|---|---|---|
+| delta hard (32) | 50% | 78% | **88%** | 13 / 2 / 1 |
+| delta unseen (32) | 69% | **91%** | 78% | 6 / 1 / 1 |
+| site A hard (48) | 71% | 77% | **98%** | 8 / 1 / 1 |
+| site A unseen (48) | 79% | 85% | **90%** | 3 / 2 / 1 |
+| site B hard (48) | 73% | **88%** | **88%** | 8 / 0 / 2 |
+| site B unseen (48) | 96% | 98% | **100%** | 0 / 0 / 0 |
+| **pooled (256)** | 75% | 86% | **91%** | 38 / 6 / 6 |
+
+Discordant: policy-only 30, avoid-only 18; exact McNemar p = 0.111. **Not significant: the
+policy's margin over a rock-aware baseline is not established** (frozen reading). Committed
+outputs: `runs/exp11_val.json`, `runs/exp11_test.json` (gitignored, like all of `runs/`).
 
 ## Repo layout
 
