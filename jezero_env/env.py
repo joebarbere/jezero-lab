@@ -105,9 +105,20 @@ LOOKAHEAD_ANGLES = (-40.0, -20.0, 0.0, 20.0, 40.0)    # deg from the goal bearin
 LOOKAHEAD_RANGES = tuple(1.5 * i for i in range(1, 9))  # 1.5 .. 12 m
 LOOKAHEAD_SIZE = len(LOOKAHEAD_ANGLES) * len(LOOKAHEAD_RANGES)
 NO_PROGRESS_SCALE = 30.0  # s
+# sensing='camera' (experiment 13, PLAN.md): a forward depth camera builds the
+# terrain map the patches are read from. [Hardware: a RealSense-D435-class
+# camera; numbers assumed, not calibrated.] Pose is perfect (idealised odometry).
+CAM_FWD = 0.25            # m ahead of the body centre
+CAM_HEIGHT = 0.55         # m above the rover's ground point
+CAM_HFOV = 87.0           # deg
+CAM_RANGE = (0.3, 4.0)    # m
+CAM_RAY_DEG = 1.0         # ray spacing
+CAM_SAMPLE_M = 0.1        # sample spacing along a ray
+CAM_NOISE = (0.005, 0.01)  # height noise sigma = a + b * (r / 2)^2, m
 
 
-def obs_layout(rock_patch=False, clock_obs=False, proprio=False, lookahead=False):
+def obs_layout(rock_patch=False, clock_obs=False, proprio=False, lookahead=False,
+               sensing='perfect'):
     """Where each part of the observation vector sits: [(name, start, shape)].
     Grids are flattened row-major from regular sample grids, so they reshape
     back to 2-D: 'terrain' (PATCH x PATCH), 'lookahead' (rays x ranges),
@@ -119,6 +130,10 @@ def obs_layout(rock_patch=False, clock_obs=False, proprio=False, lookahead=False
         parts.append(('proprio', (PROPRIO_SIZE,)))
     if lookahead:
         parts.append(('lookahead', (len(LOOKAHEAD_ANGLES), len(LOOKAHEAD_RANGES))))
+    if sensing == 'camera':                 # which cells the camera has seen; fine stays last
+        parts.append(('terrain_known', (PATCH, PATCH)))
+        if rock_patch:
+            parts.append(('fine_known', (FINE_PATCH, FINE_PATCH)))
     if rock_patch:
         parts.append(('fine', (FINE_PATCH, FINE_PATCH)))
     out, start = [], 0
@@ -153,6 +168,53 @@ class Heightmap:
         z = self.z
         return ((1 - fr) * ((1 - fc) * z[r0, c0] + fc * z[r0, c0 + 1])
                 + fr * ((1 - fc) * z[r0 + 1, c0] + fc * z[r0 + 1, c0 + 1]))
+
+
+class CameraMap:
+    """What a forward depth camera has seen this episode, at the heightmap's
+    resolution (experiment 13). update() looks from the current pose; sample()
+    returns (height, known) at world points, nearest cell."""
+
+    def __init__(self, heightmap: Heightmap):
+        self.hm = heightmap
+        n = heightmap.n
+        self.h = np.zeros((n, n), dtype=np.float32)
+        self.known = np.zeros((n, n), dtype=bool)
+        half = math.radians(CAM_HFOV) / 2
+        self.ang = np.arange(-half, half + 1e-9, math.radians(CAM_RAY_DEG))[:, None]
+        self.r = np.arange(CAM_RANGE[0], CAM_RANGE[1] + 1e-9, CAM_SAMPLE_M)[None, :]
+        self.sigma = CAM_NOISE[0] + CAM_NOISE[1] * (self.r / 2) ** 2
+
+    def reset(self):
+        self.h.fill(0.0)
+        self.known.fill(False)
+
+    def _cells(self, x, y):
+        hm = self.hm
+        col = np.clip(np.rint((np.asarray(x) + hm.extent / 2) / hm.pixel), 0, hm.n - 1).astype(int)
+        row = np.clip(np.rint((hm.extent / 2 - np.asarray(y)) / hm.pixel), 0, hm.n - 1).astype(int)
+        return row, col
+
+    def update(self, x, y, yaw, rng):
+        cx, cy = x + CAM_FWD * math.cos(yaw), y + CAM_FWD * math.sin(yaw)
+        cz = float(self.hm.sample(x, y)) + CAM_HEIGHT
+        th = yaw + self.ang
+        px, py = cx + self.r * np.cos(th), cy + self.r * np.sin(th)
+        hz = self.hm.sample(px, py)
+        # Horizon test along each ray: seen if not below the steepest sightline so far.
+        slope = (hz - cz) / self.r
+        prev = np.maximum.accumulate(slope, axis=1)
+        seen = np.ones_like(slope, dtype=bool)
+        seen[:, 1:] = slope[:, 1:] >= prev[:, :-1]
+        seen &= (np.abs(px) <= self.hm.extent / 2) & (np.abs(py) <= self.hm.extent / 2)
+        meas = hz + rng.normal(0.0, 1.0, hz.shape) * self.sigma
+        row, col = self._cells(px[seen], py[seen])
+        self.h[row, col] = meas[seen]
+        self.known[row, col] = True
+
+    def sample(self, x, y):
+        row, col = self._cells(x, y)
+        return self.h[row, col].astype(np.float64), self.known[row, col]
 
 
 class Rocks:
@@ -214,6 +276,10 @@ class JezeroEnv(gym.Env):
     stuck_limit_s: training-only shaping. End the episode with -STUCK_PENALTY
         when the goal distance hasn't improved by PROGRESS_STEP for this long.
         Evaluation leaves it off (eval builds envs from observation options only).
+    sensing: 'perfect' (default) reads the patches from the true heightmap, all
+        around. 'camera' reads them from what a forward depth camera has seen this
+        episode (CameraMap: field of view, occlusion, range noise, 0.2 s latency),
+        with masks of the known cells (experiment 13).
     rock_patch: append a 9x9 patch at 0.4 m of terrain heights (relative to the
         rover). On rock worlds the heightmap includes the rocks, so this is how
         the policy sees rocks the 1 m patch misses.
@@ -227,8 +293,13 @@ class JezeroEnv(gym.Env):
                  clock_obs: bool = False, goal_bonus: str = 'decay', holdout=None,
                  proprio: bool = False, lookahead: bool = False, stuck_limit_s=None,
                  max_episode_seconds: float | None = None, step_size: float = 0.005,
-                 camera: bool = False):
+                 camera: bool = False, sensing: str = 'perfect'):
         super().__init__()
+        if sensing not in ('perfect', 'camera'):
+            raise ValueError(f'sensing: {sensing!r}')
+        if sensing == 'camera' and lookahead:
+            raise ValueError('lookahead reads the true terrain out to 12 m; not with sensing=camera')
+        self.sensing = sensing
         self.sim = JezeroSim(world, step_size=step_size, camera=camera, report_joints=proprio)
         self.proprio = proprio
         self.lookahead = lookahead
@@ -247,6 +318,7 @@ class JezeroEnv(gym.Env):
         self.holdout = tuple(holdout)
         self.max_episode_seconds = max_episode_seconds
         self.heightmap = Heightmap(world, self.sim.meta)
+        self.cam = CameraMap(self.heightmap) if sensing == 'camera' else None
         self.rocks = Rocks(self.sim.meta.get('rocks', []))
         self.rock_patch = rock_patch
         self.clock_obs = clock_obs
@@ -258,7 +330,9 @@ class JezeroEnv(gym.Env):
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         size = (OBS_SIZE + (1 if clock_obs else 0) + (PROPRIO_SIZE if proprio else 0)
                 + (LOOKAHEAD_SIZE if lookahead else 0)
-                + (FINE_PATCH * FINE_PATCH if rock_patch else 0))
+                + (FINE_PATCH * FINE_PATCH if rock_patch else 0)
+                + ((PATCH * PATCH + (FINE_PATCH * FINE_PATCH if rock_patch else 0))
+                   if sensing == 'camera' else 0))
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(size,), dtype=np.float32)
 
         g = np.arange(PATCH) - (PATCH - 1) / 2
@@ -365,7 +439,11 @@ class JezeroEnv(gym.Env):
         px = s.x + c * self._patch_fwd - si * self._patch_left
         py = s.y + si * self._patch_fwd + c * self._patch_left
         ground = self.heightmap.sample(s.x, s.y)
-        terrain = self.heightmap.sample(px, py) - ground
+        if self.cam is None:
+            terrain = self.heightmap.sample(px, py) - ground
+        else:
+            h, known = self.cam.sample(px, py)
+            terrain = np.where(known, h - ground, 0.0)
         parts = []
         if self.clock_obs:
             parts.append([1.0 - self.steps / self.budget])
@@ -385,8 +463,15 @@ class JezeroEnv(gym.Env):
         if self.rock_patch:
             fx = s.x + c * self._fine_fwd - si * self._fine_left
             fy = s.y + si * self._fine_fwd + c * self._fine_left
+        if self.cam is not None:
+            parts.append(known.astype(np.float64))
+            if self.rock_patch:
+                fh, fknown = self.cam.sample(fx, fy)
+                parts.append(fknown.astype(np.float64))
+        if self.rock_patch:
             # Rock worlds bake rocks into the (12.5 cm) heightmap, so this sees them.
-            parts.append(self.heightmap.sample(fx, fy) - ground)
+            parts.append(self.heightmap.sample(fx, fy) - ground if self.cam is None
+                         else np.where(fknown, fh - ground, 0.0))
         obs = np.concatenate([
             [gx / GOAL_RANGE, gy / GOAL_RANGE, min(dist / GOAL_RANGE, 3.0)],
             [math.sin(err), math.cos(err)],
@@ -449,6 +534,9 @@ class JezeroEnv(gym.Env):
         self._prev_dist = self._goal_dist(s)
         self._best_dist = self._prev_dist
         self._since_progress = 0.0
+        if self.cam is not None:
+            self.cam.reset()
+            self.cam.update(s.x, s.y, s.yaw, self.np_random)
         return self._obs(s), {'segment': seg, 'goal': self.goal, 'budget': self.budget,
                               'distance': self._prev_dist, 'spawn_attempts': self.spawn_attempts,
                               'settle_time': self.sim.settle_time}
@@ -505,4 +593,7 @@ class JezeroEnv(gym.Env):
                 'x': s.x, 'y': s.y}
         if terminated or truncated:
             info['episode_stats'] = self._episode_stats(ep, event, dist, s)
-        return self._obs(s), float(reward), terminated, truncated, info
+        obs = self._obs(s)               # camera map as of the last step: 0.2 s latency
+        if self.cam is not None:
+            self.cam.update(s.x, s.y, s.yaw, self.np_random)
+        return obs, float(reward), terminated, truncated, info

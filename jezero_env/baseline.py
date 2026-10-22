@@ -40,17 +40,25 @@ def _fine_grid():
     return FINE_PATCH, FINE_SPACING, fwd.ravel(), left.ravel()
 
 
-def rock_height(fine, h_rock=0.12, refits=2):
+UNKNOWN_BLOCK = 10.0                    # m: an unseen cell under unknown='block'
+
+
+def rock_height(fine, h_rock=0.12, refits=2, known=None):
     """Height above a plane fitted to the fine patch, as a (left, fwd) grid.
     Robust: refit without the points standing more than h_rock above the last
-    fit, so a large rock can't tilt the plane toward itself and hide."""
+    fit, so a large rock can't tilt the plane toward itself and hide.
+    known (experiment 13): fit only the cells the camera has seen."""
     n, _, fwd, left = _fine_grid()
     a = np.column_stack([np.ones_like(fwd), fwd, left])
-    keep = np.ones(fine.size, dtype=bool)
+    keep = np.ones(fine.size, dtype=bool) if known is None else known.copy()
+    if keep.sum() < 3:
+        return np.zeros((n, n))
     for _ in range(refits + 1):
         coef, *_ = np.linalg.lstsq(a[keep], fine[keep], rcond=None)
         resid = fine - a @ coef
         new = resid <= h_rock
+        if known is not None:
+            new &= known
         if new.sum() < 3 or (new == keep).all():
             break
         keep = new
@@ -92,9 +100,13 @@ def score_arc(rock, kappa, err, h_rock, length):
     return max(clear, 0.0), arc_len, end_err
 
 
-def make_avoid_policy(h_rock=0.12, length=1.6, k_block=3.0):
+def make_avoid_policy(h_rock=0.12, length=1.6, k_block=3.0, unknown=None):
     """A fresh controller per episode (eval.evaluate builds one each time): its
-    only state is the stall escape's progress tracker."""
+    only state is the stall escape's progress tracker.
+    unknown (experiment 13, sensing='camera'): 'free' or 'block' for cells the
+    camera hasn't seen; the fine_known mask sits just before the fine patch."""
+    if unknown not in (None, 'free', 'block'):
+        raise ValueError(f'unknown: {unknown!r}')
     from jezero_env.env import FINE_PATCH, GOAL_RANGE, MAX_SPEED, MAX_TURN
     st = dict(best=math.inf, since=0, escape=0, side=1.0, last_kappa=0.0)
 
@@ -106,7 +118,14 @@ def make_avoid_policy(h_rock=0.12, length=1.6, k_block=3.0):
     def policy(obs):
         err = math.atan2(obs[3], obs[4])
         dist = float(obs[2]) * GOAL_RANGE
-        rock = rock_height(np.asarray(obs[-FINE_PATCH * FINE_PATCH:], dtype=np.float64), h_rock)
+        nf = FINE_PATCH * FINE_PATCH
+        fine = np.asarray(obs[-nf:], dtype=np.float64)
+        if unknown is None:
+            rock = rock_height(fine, h_rock)
+        else:
+            known = np.asarray(obs[-2 * nf:-nf]) > 0.5
+            rock = rock_height(fine, h_rock, known=known)
+            rock[~known.reshape(rock.shape)] = 0.0 if unknown == 'free' else UNKNOWN_BLOCK
         scored = []
         for kappa in arcs():
             clear, arc_len, end_err = score_arc(rock, kappa, err, h_rock, length)

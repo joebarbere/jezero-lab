@@ -65,7 +65,10 @@ def obs_options(model_path=None, config_path=None):
     if not path:
         return None
     kwargs = json.load(open(path)).get('env_kwargs', {})
-    return {k: bool(kwargs.get(k, False)) for k in OBS_OPTIONS}
+    out = {k: bool(kwargs.get(k, False)) for k in OBS_OPTIONS}
+    if kwargs.get('sensing', 'perfect') != 'perfect':
+        out['sensing'] = kwargs['sensing']
+    return out
 
 
 _policies = {}
