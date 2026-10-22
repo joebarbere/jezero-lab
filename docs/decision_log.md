@@ -716,6 +716,93 @@ over the tests; the best new seed averages 90%).
 > episodes aren't reproducible across machines or settings. Success *rates* over many
 > episodes are: they are what to report, and what to check under perturbation.
 
+### D34. Experiment 11: a rock-avoiding baseline closes most of the gap
+**Change.** D32's baseline turns toward the goal and drives, blind to the rocks the policy
+sees. A hand-written controller now uses the **same observation**: it finds rocks as height
+above a robust plane fit to the fine patch, scores nine arcs by clear distance and heading
+error at the end, drives the best, and has a fixed stall escape (PLAN.md, experiment 11).
+Its protocol was written down before any run; two design fixes came from synthetic and
+smoke checks, before validation or test data was opened. Twelve settings were scored on
+D32's 72 validation spawns: best 82% goal (6% tipped) vs the old baseline's 67% (25%), so
+the frozen gate passed. The chosen setting (`h_rock` 0.08 m, L 1.2 m, `k_block` 3) then ran
+once on the test spawns, paired with the policy's committed rows.
+
+**Numbers** (test goal rates; sites A = held-out upper, B = held-out margin):
+
+| Test set | old baseline | rock-avoiding baseline | policy | tip-overs (old / avoid / policy) |
+|---|---|---|---|---|
+| delta hard (32) | 50% | 78% | **88%** | 13 / 2 / 1 |
+| delta unseen (32) | 69% | **91%** | 78% | 6 / 1 / 1 |
+| site A hard (48) | 71% | 77% | **98%** | 8 / 1 / 1 |
+| site A unseen (48) | 79% | 85% | **90%** | 3 / 2 / 1 |
+| site B hard (48) | 73% | **88%** | **88%** | 8 / 0 / 2 |
+| site B unseen (48) | 96% | 98% | **100%** | 0 / 0 / 0 |
+| **pooled (256)** | 75% | 86% | **91%** | 38 / 6 / 6 |
+
+Paired over the 256 spawns: the policy alone reaches the goal on 30, the new baseline alone
+on 18. Exact McNemar **p = 0.11**.
+
+**Conclusions.**
+1. **Most of the old gap was rock-blindness.** Against the old baseline the policy led by
+   16 points pooled; against one that sees the same rocks, by 5, and that 5 is not
+   significant at the frozen p < 0.05.
+2. **Tip-overs were the old baseline's main failure**, and avoiding rocks fixes them: 38 → 6,
+   the same as the policy.
+3. **Where the policy still leads is hard starts** (site A hard 98% vs 77%, delta hard 88%
+   vs 78%); on delta unseen the new baseline is ahead (91% vs 78%). Per set, with 32–48
+   spawns, these are directions, not claims.
+
+**Decision.** The headline changes: the policy is **not shown to beat a rock-aware
+hand-written controller**; it is ahead of one by 5 points pooled, within noise. Both
+baselines are reported from here on. The obvious next question, whether the policy's
+edge on hard starts is real, needs more test spawns (frozen before they're run).
+
+> **Explainer: a baseline is only as good as what it can see.** A comparison credits the
+> learner with everything the opponent lacks. The old baseline couldn't see rocks, so
+> "the policy beats it" mixed two things: learning to drive, and simply using the rock
+> data. Giving a hand-written controller the same data separates them. Here, most of the
+> margin was the data.
+
+### D35. Experiment 12: no hard-start advantage on fresh spawns
+**Change.** D34 left one possible edge for the policy: hard starts (on D32's test spawns,
+policy-only 23 vs avoid-only 10 of 128). That comparison is what raised the question, so it
+was re-asked on **600 new hard spawns** (seeds 4,000,000+, 200 per test world), with both
+controllers fixed (D32's policy, D34's baseline setting) and the test sized in advance
+(~76% power for a true 5-point gap). Protocol in PLAN.md, written before the run.
+
+**Numbers:**
+
+| Hard starts, fresh spawns | rock-avoiding baseline | policy | tip-overs (avoid / policy) |
+|---|---|---|---|
+| delta (200) | **91%** | 84% | 10 / 12 |
+| site A, held-out upper (200) | 80% | **86%** | 5 / 7 |
+| site B, held-out margin (200) | **94%** | 90% | 4 / 6 |
+| **pooled (600)** | **88.7%** | 86.8% | 19 / 25 |
+
+Discordant: policy-only 53, avoid-only 64. Gap −1.8 points (95% −5.4 to +1.7), exact
+McNemar **p = 0.36**.
+
+**Conclusions.**
+1. **No hard-start advantage shown.** If the policy is better on hard starts at all, it is
+   by at most about 2 points; the rock-avoiding baseline is nominally ahead.
+2. **D32's hard-start numbers were partly luck.** The same policy reaches 84–90% here, against
+   88–98% on D32's 32–48 test spawns per set (site A hard 98% → 86%). Small test sets gave
+   honest but noisy numbers, and the biggest of them suggested the question that this
+   answers.
+3. **Tip-overs are similar** (19 vs 25 of 600).
+
+**Decision.** The project's headline: a learned policy and a hand-written rock-avoiding
+controller perform the same on these tasks, within ~2–5 points. The learning pipeline works
+(it found good driving from rewards alone), but **the trained policy is not better than a
+simple controller given the same terrain data.** Further RL experiments should be measured
+against the rock-avoiding baseline, not the rock-blind one.
+
+> **Explainer: why re-test on fresh data.** When you look at several comparisons and pick
+> the one with the biggest difference to follow up, that difference is inflated by
+> whatever luck made it stand out (the winner's curse). Re-measuring it on new data, with
+> the size of test decided in advance, removes that luck. Here the 13-point hard-start lead
+> shrank to −2.
+
 ---
 
 ## Lessons in one page

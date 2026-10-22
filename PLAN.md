@@ -1022,10 +1022,130 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
 - [x] **Upstream PR #230 merged** (2026-10-20, `b874497`); submodule bumped to it.
 - [ ] **Follow up upstream:** send the Harmonic port (`feature/gazebo-harmonic`) once #228
       gets a reply; #229 open.
+- [x] **Experiment 11, a rock-avoiding baseline** (below, D34): the policy's pooled lead
+      falls from 16 points to 5, p = 0.11, not established.
+- [x] **Experiment 12, hard starts at n = 600** (below, D35): no advantage; gap −1.8 points
+      (95% −5.4 to +1.7), p = 0.36.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
       pitch), then plan a sim-to-real test.
+
+## Experiment 11: a rock-avoiding baseline (protocol frozen 2026-10-20, before any run)
+
+**Why.** The project's headline (D32) compares the policy with a baseline that turns toward
+the goal and drives, blind to rocks. The policy sees the 9×9 fine patch at 0.4 m; the
+baseline ignores it. A gap measured against a controller that can't see the hazards says
+little about learning. This experiment builds a hand-written controller that uses **the
+same observation** (coarse 7×7 + fine 9×9 patch, nothing else) to avoid rocks, and asks how
+much of the gap is left.
+
+**Controller (`jezero_env/baseline.py`, `avoid_policy`).** Deterministic, no state, no
+learning. Fit a plane to the fine patch and treat height above it as rock (*amended before any run:*
+refit without the points more than `h_rock` above the fit, twice; a synthetic check showed a
+large boulder tilting a plain least-squares plane enough to hide itself). Score nine
+constant-curvature arcs (radius ±0.45, ±0.8, ±1.5, ±3 m and straight; 0.45 m is the
+rover's minimum radius), each L metres long, by the clear distance before any point within
+±0.25 m of the arc (the rover's half-width) rises more than `h_rock` above the plane, and by
+the heading error to the goal at the arc's end:
+cost = |heading error at end| / π + `k_block` × (1 − clear / L). Drive the cheapest arc,
+at the old baseline's speed rule (cos error, 0.2–1), halved if the arc is not fully clear.
+If no arc is clear for 0.35 m, reverse straight at half speed. *Amended before any run:* a
+stall escape. Smoke spawns (seed 3,000,000+, neither validation nor test) showed the rover
+high-centred on a rock under its own centre, every arc clear, wheels spinning for 10 minutes.
+If the goal distance hasn't improved by 0.25 m in 10 s: reverse 2 s at half speed, then 3 s
+on the clearest arc turning the other way from the last choice, then resume. Fixed
+constants, not tuned.
+
+**Tuning: validation only.** A fixed grid of 12 settings, `h_rock` ∈ {0.08, 0.12, 0.16} m ×
+L ∈ {1.2, 1.6} m × `k_block` ∈ {1, 3}, each scored on the D32 validation spawns (seed
+2,000,000+, hard variant, 12 per site on the six training sites, 72 episodes). The setting
+with the highest validation goal rate wins (ties: fewer tip-overs, then the smaller
+`h_rock`). No other parameter is tuned, and the test spawns are not opened until the setting
+is chosen.
+
+**Sanity gate (validation).** The chosen setting must beat the old baseline's validation
+goal rate on the same 72 spawns. If it doesn't, it isn't a stronger baseline: stop and
+report. One redesign is allowed after a failed gate, recorded here as post hoc; no more.
+
+**Test, once.** The chosen setting on the six D32 test sets with identical spawns (delta:
+the 32 fresh spawns per variant; sites A and B: 48), against the chosen policy's committed
+rows (`runs/test_exp9_*.json`, `exp8_sites_full_s0@1200000`). The upstream bump (above)
+leaves those rows valid: driving is bit-identical.
+
+**Reading the result (frozen).**
+- Primary statistic: the pooled goal rate over all six sets (256 paired spawns), policy vs
+  rock-avoiding baseline, with an exact two-sided McNemar test on the discordant spawns.
+- Per-set rates are reported with counts; with 32–48 spawns (SE ≈ 7–9 points), no per-set
+  claim beyond its direction.
+- Policy ahead pooled at p < 0.05: "the policy beats a rock-avoiding baseline by X points",
+  and the write-up names both baselines. Not significant: the margin over a rock-aware
+  baseline is not established, and the write-up's headline says so. Baseline ahead: report it
+  as the result.
+- Tip-over rates are reported alongside; they are not part of the decision.
+
+**Result (2026-10-20, D34).** Validation: chosen `h_rock` 0.08, L 1.2, `k_block` 3 (82% goal,
+6% tipped) vs the old baseline's 67% (25%), gate passed (tied at 82% with `h0.12_L1.2_k1`,
+broken by tip-overs as frozen). Test, run once:
+
+| Test set | old baseline | rock-avoiding baseline | policy | tip-overs (old / avoid / policy) |
+|---|---|---|---|---|
+| delta hard (32) | 50% | 78% | **88%** | 13 / 2 / 1 |
+| delta unseen (32) | 69% | **91%** | 78% | 6 / 1 / 1 |
+| site A hard (48) | 71% | 77% | **98%** | 8 / 1 / 1 |
+| site A unseen (48) | 79% | 85% | **90%** | 3 / 2 / 1 |
+| site B hard (48) | 73% | **88%** | **88%** | 8 / 0 / 2 |
+| site B unseen (48) | 96% | 98% | **100%** | 0 / 0 / 0 |
+| **pooled (256)** | 75% | 86% | **91%** | 38 / 6 / 6 |
+
+Discordant: policy-only 30, avoid-only 18; exact McNemar p = 0.111. **Not significant: the
+policy's margin over a rock-aware baseline is not established** (frozen reading). Local
+outputs: `runs/exp11_val.json`, `runs/exp11_test.json` (gitignored, like all of `runs/`).
+
+## Experiment 12: is the policy's edge on hard starts real? (protocol frozen 2026-10-20, before any run)
+
+**Why.** In experiment 11 the policy led the rock-avoiding baseline on the hard starts
+(pooled over the three test worlds: 30 vs 18 discordant overall; on hard starts alone,
+policy-only 23, avoid-only 10 of 128) but not significantly, and that comparison is the one
+that suggested the question. So this tests it on **new spawns**, sized in advance.
+
+**Fixed, nothing tuned.** The policy is D32's choice (`exp8_sites_full_s0` @1.2M); the
+baseline is experiment 11's validation choice (`h_rock` 0.08, L 1.2, `k_block` 3). Neither
+changes, whatever this shows.
+
+**Spawns.** Hard variant only (random heading, 10 m jitter, segments 0–2), **200 per test
+world** (delta, held-out upper = site A, held-out margin = site B), seeds 4,000,000–
+4,000,199. Never used: test is 1,000,000+, validation 2,000,000+, smoke 3,000,000+. Same
+spawns for both controllers.
+
+**Size.** From experiment 11's hard starts (25.8% discordant), an exact McNemar test on 600
+paired spawns has ~76% power for a true 5-point gap and >99% for 8 points (simulated). The
+11-point gap seen in experiment 11 is likely an overestimate (it is what raised the
+question), so the test is sized for less.
+
+**Reading (frozen).**
+- Primary: pooled over the 600, policy vs baseline goal rate, exact two-sided McNemar.
+- p < 0.05 with the policy ahead: "on hard starts the policy beats a rock-aware baseline by
+  X points" (with the interval). Otherwise: "no hard-start advantage shown at this size",
+  and quote the upper end of the 95% interval on the gap as the most the data allow.
+- Per world: rates with counts, direction only.
+- 95% interval on the paired difference: Wald on the discordant counts, (b − c)/n ± 1.96
+  √(b + c − (b − c)²/n)/n.
+- No other comparison is promoted to a claim, and the experiment-11 numbers are not pooled
+  in.
+
+**Result (2026-10-20, D35).**
+
+| Hard starts, fresh spawns | rock-avoiding baseline | policy | tip-overs (avoid / policy) |
+|---|---|---|---|
+| delta (200) | **91%** | 84% | 10 / 12 |
+| site A, held-out upper (200) | 80% | **86%** | 5 / 7 |
+| site B, held-out margin (200) | **94%** | 90% | 4 / 6 |
+| **pooled (600)** | **88.7%** | 86.8% | 19 / 25 |
+
+Policy-only 53, avoid-only 64; gap −1.8 points (95% −5.4 to +1.7), McNemar p = 0.355.
+**No hard-start advantage shown at this size**; the most the data allow is +1.7 points for
+the policy. Local output: `runs/exp12_hard.json`.
 
 ## Repo layout
 

@@ -2,11 +2,13 @@
 
 Joe Barbere · October 10, 2026
 
-A reinforcement-learning policy for NASA-JPL's Open Source Rover now beats a hand-written go-to-goal controller on every test set: 88% vs 50% goal rate among boulders on the Jezero delta, and 88–98% vs 71–73% on the hard starts at two sites it never trained on, while tipping over in 0–4% of episodes. Everything runs locally on one desktop (12 CPU cores, no GPU).
+A reinforcement-learning policy for NASA-JPL's Open Source Rover reaches the goal on 91% of held-out starts among boulders at three Jezero sites, two of which it never trained on, while tipping over in 0–4% of episodes. That beats a hand-written go-to-goal controller that can't see rocks (75%), but **not a hand-written controller given the same rock data**: it reaches 86% on the same starts, and on 600 fresh hard starts it matches the policy (88.7% vs 86.8%; the policy's edge is at most about 2 points). The pipeline learns good driving from rewards alone; it doesn't learn better driving than a simple rock-avoiding rule. Everything runs locally on one desktop (12 CPU cores, no GPU).
+
+*Updated 2026-10-20 with experiments 11 and 12 (decision log D34, D35); the original version reported only the rock-blind baseline.*
 
 ## Results
 
-The chosen policy reaches the goal more often than the baseline on all six test sets, by 4 to 38 points. It was picked on a separate validation set, so the test numbers aren't inflated by selection.
+The chosen policy reaches the goal more often than the rock-blind baseline on all six test sets, by 4 to 38 points. It was picked on a separate validation set, so the test numbers aren't inflated by selection. A second, rock-avoiding baseline (experiment 11, below) closes most of that gap.
 
 | Test set | Baseline goal rate | Policy goal rate | Baseline tip-overs | Policy tip-overs |
 | --- | --- | --- | --- | --- |
@@ -18,6 +20,31 @@ The chosen policy reaches the goal more often than the baseline on all six test 
 | Site B, unseen routes | 96% | **100%** | 0% | 0% |
 
 Delta: 32 fresh starts per test; sites A and B: 48 per test. "Hard" starts face a random direction up to 10 m from the route among Mars-realistic boulder fields. The baseline turns toward the goal and drives. Tiny observation noise flips 12% of individual episodes, but the rates stay within sampling noise (89% vs 91% pooled), so they describe the policy, not one exact run.
+
+**Against a baseline that sees the rocks** (experiment 11). The baseline above ignores the terrain the policy sees. A second hand-written controller uses the same fine terrain patch to pick a rock-free arc toward the goal, tuned only on the validation set and run once on the same test spawns:
+
+| Test set | Rock-blind baseline | Rock-avoiding baseline | Policy |
+| --- | --- | --- | --- |
+| Delta, hard starts | 50% | 78% | **88%** |
+| Delta, unseen segment | 69% | **91%** | 78% |
+| Site A, hard | 71% | 77% | **98%** |
+| Site A, unseen routes | 79% | 85% | **90%** |
+| Site B, hard | 73% | **88%** | **88%** |
+| Site B, unseen routes | 96% | 98% | **100%** |
+| **All 256 starts** | 75% | 86% | **91%** |
+
+The policy is ahead pooled, but by 5 points rather than 16, and that difference is not statistically established (paired test, p = 0.11). Avoiding rocks also brings tip-overs down from 38 to 6, the same as the policy. Most of the original margin came from using the rock data at all, not from learning.
+
+**Hard starts, re-tested on fresh spawns** (experiment 12). The policy's apparent lead on hard starts was re-measured on 600 new spawns, with the test size fixed in advance:
+
+| Hard starts, fresh spawns | rock-avoiding baseline | policy | tip-overs (avoid / policy) |
+|---|---|---|---|
+| delta (200) | **91%** | 84% | 10 / 12 |
+| site A, held-out upper (200) | 80% | **86%** | 5 / 7 |
+| site B, held-out margin (200) | **94%** | 90% | 4 / 6 |
+| **pooled (600)** | **88.7%** | 86.8% | 19 / 25 |
+
+No advantage (p = 0.36): the gap is −1.8 points, and at most +1.7 for the policy. The same policy that scored 88–98% on the small test sets scores 84–90% here, so those numbers were partly luck.
 
 ## How it works
 
@@ -42,6 +69,8 @@ Four changes made the difference: varied training worlds, a decaying learning ra
 | 8 | Train on six sites along Perseverance's route, not one | 71% / 76% | Adopted |
 | 9 | Six seeds; choose the seed on a validation set | Chosen policy 88% / 78% | Adopted procedure |
 | 10 | Batch doubled to 6,144 samples per update | Per-seed average 85% vs 79%; worst seed 74% vs 64% | Adopted |
+| 11 | A second baseline that avoids rocks with the same terrain data | 78% / 91%; pooled over all tests 86% vs the policy's 91% (p = 0.11) | Headline revised |
+| 12 | Hard starts re-tested on 600 fresh spawns | Rock-avoiding 88.7% vs policy 86.8% (p = 0.36) | No policy advantage |
 
 Rows 5–8 and 10 are means over seeds on 32 fresh starts; row 9 is the single chosen policy. Earlier rows were short 400k-step screens whose exact numbers aren't comparable, so only the direction is shown. The full reasoning, with numbers and an explainer for each step, is in the [decision log](decision_log.md) (D1–D33).
 
@@ -55,6 +84,8 @@ Most of the progress came from testing honestly, not from clever additions.
 - **One test set is a sample of one.** New held-out sites showed the old "unseen" segment was the hardest place on the map, not a typical one.
 - **Keep choosing and reporting separate.** Validation picked the seed; the test sets were only used to report. Validation could pick seeds (big differences) but not checkpoints (small ones).
 - **Report rates, not episodes.** Among boulders a fifth-decimal difference flips single episodes; success rates held under perturbation.
+- **A baseline is only as good as what it can see.** The first baseline was blind to rocks; a hand-written one given the same rock data matched the policy.
+- **Re-test the comparison that caught your eye.** The biggest per-set lead (hard starts) vanished on fresh spawns: it had been picked out because it was large.
 - **Steadier updates beat more updates.** Doubling the batch cut seed spread at the same cost.
 
 ## Side work
@@ -67,8 +98,9 @@ Two pieces reach beyond the RL policy: fixes offered back to the OSR project, an
 
 ## Next steps
 
-The best next lever is making every seed good, so a single training run is enough; the batch result points that way.
+The first question now is whether learning can beat the rock-avoiding controller at all; making every seed good (the batch result) matters only if it can.
 
+- [ ] **Measure everything against the rock-avoiding baseline** (D34, D35): a training change only counts if it beats that controller, not the rock-blind one. The realistic-sensing test (the policy's terrain data is perfect and all-round) applies to both.
 - [ ] **Push the batch further:** 4× the original (12,288 samples per update), six seeds, compared with the 1× and 2× arms (about 10 h).
 - [ ] **Pick from the new seeds too:** score the six bigger-batch seeds on validation; replace the chosen policy if one beats it.
 - [ ] **Try the ROSA agent in conversation** ([rosa/](../rosa/README.md)) with an API key, then shape it into a small example for the OSR community.
