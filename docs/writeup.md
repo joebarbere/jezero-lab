@@ -2,9 +2,9 @@
 
 Joe Barbere · October 10, 2026
 
-A reinforcement-learning policy for NASA-JPL's Open Source Rover reaches the goal on 91% of held-out starts among boulders at three Jezero sites, two of which it never trained on, while tipping over in 0–4% of episodes. That beats a hand-written go-to-goal controller that can't see rocks (75%), but **not a hand-written controller given the same rock data**: it reaches 86% on the same starts, and on 600 fresh hard starts it matches the policy (88.7% vs 86.8%; the policy's edge is at most about 2 points). The pipeline learns good driving from rewards alone; it doesn't learn better driving than a simple rock-avoiding rule. Everything runs locally on one desktop (12 CPU cores, no GPU).
+A reinforcement-learning policy for NASA-JPL's Open Source Rover reaches the goal on 91% of held-out starts among boulders at three Jezero sites, two of which it never trained on, while tipping over in 0–4% of episodes. That beats a hand-written go-to-goal controller that can't see rocks (75%), but **not a hand-written controller given the same rock data**: it reaches 86% on the same starts, and on 600 fresh hard starts it matches the policy (88.7% vs 86.8%; the policy's edge is at most about 2 points). The pipeline learns good driving from rewards alone; it doesn't learn better driving than a simple rock-avoiding rule. With a realistic forward camera instead of a perfect map, the rule is ahead (91.8% vs 87.9% on 1,200 fresh starts, p = 0.002), and neither loses anything measurable from the limited view. Everything runs locally on one desktop (12 CPU cores, no GPU).
 
-*Updated 2026-10-20 with experiments 11 and 12 (decision log D34, D35); the original version reported only the rock-blind baseline.*
+*Updated 2026-10-20 and 2026-10-23 with experiments 11–13 (decision log D34–D36); the original version reported only the rock-blind baseline.*
 
 ## Results
 
@@ -46,6 +46,20 @@ The policy is ahead pooled, but by 5 points rather than 16, and that difference 
 
 No advantage (p = 0.36): the gap is −1.8 points, and at most +1.7 for the policy. The same policy that scored 88–98% on the small test sets scores 84–90% here, so those numbers were partly luck.
 
+**With a realistic camera** (experiment 13). Both controllers see only what a forward depth camera has seen (87° field of view, 4 m range, nothing behind rocks, noise, 0.2 s delay). Six new policies were trained on that view; the best on validation was tested once against the rule, retuned on the same view, on 1,200 fresh starts:
+
+| Fresh spawns (200 each) | rock-avoiding rule | policy | tip-overs (rule / policy) | timeouts (rule / policy) |
+|---|---|---|---|---|
+| delta hard | 90% | 90% | 13 / 6 | 6 / 15 |
+| delta unseen | **93%** | 68% | 2 / 5 | 12 / 59 |
+| site A hard | 87% | **88%** | 5 / 10 | 21 / 14 |
+| site A unseen | 88% | **94%** | 10 / 5 | 13 / 7 |
+| site B hard | **94%** | 90% | 2 / 13 | 9 / 7 |
+| site B unseen | 97% | **98%** | 0 / 1 | 6 / 3 |
+| **pooled (1,200)** | **91.8%** | 87.9% | 32 / 40 | 67 / 105 |
+
+The rule is ahead by 3.8 points (95% interval 1.5 to 6.2, p = 0.002), mostly on the delta's unseen segment, where the policy often runs out of time. Neither controller loses anything measurable from the camera compared with the perfect map.
+
 ## How it works
 
 ![Pipeline: HiRISE terrain → Gazebo worlds → Gym environment → PPO + terrain CNN → validation → test](media/pipeline.png)
@@ -71,6 +85,7 @@ Four changes made the difference: varied training worlds, a decaying learning ra
 | 10 | Batch doubled to 6,144 samples per update | Per-seed average 85% vs 79%; worst seed 74% vs 64% | Adopted |
 | 11 | A second baseline that avoids rocks with the same terrain data | 78% / 91%; pooled over all tests 86% vs the policy's 91% (p = 0.11) | Headline revised |
 | 12 | Hard starts re-tested on 600 fresh spawns | Rock-avoiding 88.7% vs policy 86.8% (p = 0.36) | No policy advantage |
+| 13 | Both controllers see through a realistic camera; policy retrained | Rule 91.8% vs policy 87.9% on 1,200 starts (p = 0.002) | Rule ahead |
 
 Rows 5–8 and 10 are means over seeds on 32 fresh starts; row 9 is the single chosen policy. Earlier rows were short 400k-step screens whose exact numbers aren't comparable, so only the direction is shown. The full reasoning, with numbers and an explainer for each step, is in the [decision log](decision_log.md) (D1–D33).
 
@@ -100,7 +115,8 @@ Two pieces reach beyond the RL policy: fixes offered back to the OSR project, an
 
 The first question now is whether learning can beat the rock-avoiding controller at all; making every seed good (the batch result) matters only if it can.
 
-- [ ] **Measure everything against the rock-avoiding baseline** (D34, D35): a training change only counts if it beats that controller, not the rock-blind one. The realistic-sensing test (the policy's terrain data is perfect and all-round) applies to both.
+- [ ] **Measure everything against the rock-avoiding baseline** (D34–D36): a training change only counts if it beats that controller, not the rock-blind one, under the camera view (D36).
+- [ ] **The delta's unseen segment** is where the policy loses most (68% vs the rule's 93% with the camera; 59 timeouts in 200): look at what it does there before trying anything bigger.
 - [ ] **Push the batch further:** 4× the original (12,288 samples per update), six seeds, compared with the 1× and 2× arms (about 10 h).
 - [ ] **Pick from the new seeds too:** score the six bigger-batch seeds on validation; replace the chosen policy if one beats it.
 - [ ] **Try the ROSA agent in conversation** ([rosa/](../rosa/README.md)) with an API key, then shape it into a small example for the OSR community.

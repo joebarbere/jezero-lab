@@ -11,7 +11,7 @@ import torch
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn
 
-GRIDS = ('terrain', 'fine', 'lookahead')
+GRIDS = ('terrain', 'fine', 'lookahead', 'terrain_known', 'fine_known')
 
 
 def _grid_net(shape, channels=(16, 32), out=64):

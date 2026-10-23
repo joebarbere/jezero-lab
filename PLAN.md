@@ -1026,6 +1026,8 @@ CNN, decaying LR and 6,144-sample batches, with the seed chosen on validation (D
       falls from 16 points to 5, p = 0.11, not established.
 - [x] **Experiment 12, hard starts at n = 600** (below, D35): no advantage; gap −1.8 points
       (95% −5.4 to +1.7), p = 0.36.
+- [x] **Experiment 13, learning vs the rule under camera-like sensing** (below, D36): the
+      rule is ahead, −3.8 points (95% −6.2 to −1.5), p = 0.002.
 - [ ] **Remaining training ideas:** a privileged critic (simulation-only inputs such as
       wheel contacts and slip, for the value function only) and a tilt-rate penalty.
 - [ ] **Toward the real rover:** an IMU on the physical OSR (the policy uses roll and
@@ -1146,6 +1148,85 @@ question), so the test is sized for less.
 Policy-only 53, avoid-only 64; gap −1.8 points (95% −5.4 to +1.7), McNemar p = 0.355.
 **No hard-start advantage shown at this size**; the most the data allow is +1.7 points for
 the policy. Local output: `runs/exp12_hard.json`.
+
+## Experiment 13: can learning beat the rock-avoiding rule under realistic sensing? (protocol frozen 2026-10-22, before any run)
+
+**Why.** D34–D35: with a perfect, all-round terrain map, a hand-written rock-avoiding rule
+matches the trained policy. Real rovers see the ground through a forward camera: a limited
+field of view, nothing behind rocks, noise that grows with range, and a little latency. A
+rule built for perfect data may lose more from that than a policy trained on it. This asks
+whether learning wins when **both** get the same realistic view.
+
+**Sensor model (`sensing='camera'` in `JezeroEnv`; fixed before any run).**
+- A forward depth camera 0.25 m ahead of the body centre and 0.55 m above the rover's ground
+  point, horizontal field of view 87°, range 0.3–4.0 m (a RealSense-D435-class camera; the
+  numbers are from memory of its datasheet, not checked, and are an assumption either way).
+- Visibility: rays every 1° across the field of view, sampled every 0.1 m; a sample is seen
+  if no nearer sample on its ray rises above the camera's sightline (horizon test on the true
+  heightmap, rocks included).
+- Noise: each seen sample's height gets N(0, σ), σ = 0.005 + 0.01·(r/2)² m (1.5 cm at 2 m,
+  4.5 cm at 4 m; an assumed stereo-like r² growth, not a calibrated model).
+- Map: a world-frame grid at the heightmap's resolution, reset each episode; each new
+  measurement overwrites its cell. Pose is perfect (idealised odometry, stated as such).
+- Latency: each observation is built from the map *before* that step's camera update
+  (0.2 s old).
+- Observation: the coarse 7×7 and fine 9×9 patches are read from the map (nearest cell);
+  unseen cells read 0 (the rover's own ground height), and two masks say which cells are
+  known (`terrain_known` 7×7, `fine_known` 9×9), placed before the fine patch so the fine
+  patch stays last.
+
+**Policy.** D33's recipe with `--sensing camera`: six sites, terrain CNN (the masks are extra
+grids), rock patch, map goals, random heading, 10 m jitter, LR 3e-4 decaying linearly to 0,
+`--n-steps 1024 --batch-size 1024`, **1.5M steps from scratch** (D33's runs were 400k + a
+1.1M resume; same total), six seeds (0–5). The seed is chosen on validation (final
+checkpoints; D32: choose the seed, not the checkpoint).
+
+**Rock-avoiding baseline under the same sensing.** Experiment 11's controller, reading the
+same masked patches: the plane is fitted to known cells only, and unseen cells are treated
+per a setting `unknown` ∈ {`free`, `block`}. Grid: `h_rock` ∈ {0.08, 0.12, 0.16} ×
+`k_block` ∈ {1, 3} × `unknown` ∈ {free, block}, with L fixed at 1.2 m (L = 1.6 lost in all
+six pairs on experiment 11's validation). Chosen on validation; ties as experiment 11.
+
+**Validation (both).** D32's validation spawns (seed 2,000,000+, hard, 12 per training
+site, 72), camera sensing. Gate for the baseline: it must beat the rock-blind baseline
+(which uses no terrain, so sensing doesn't affect it) on the same spawns; otherwise stop.
+
+**Test, once.** 200 new spawns per test world per variant (hard and unseen), seeds
+5,000,000–5,000,199: **1,200 paired spawns**, both controllers under camera sensing.
+- Primary: pooled goal rate, policy vs baseline, exact two-sided McNemar, 95% Wald interval
+  on the paired difference (as experiment 12).
+- p < 0.05 with the policy ahead: "under camera-like sensing the learned policy beats a
+  rock-aware rule by X points". Otherwise "not shown", with the interval's upper end.
+- Secondary, reported only: on the 600 hard spawns, the perfect-sensing policy (D32) and
+  perfect-sensing baseline (experiment 11's setting), to show what the sensing costs each.
+- Per world and variant: counts, direction only. Tip-overs alongside.
+
+**Compute.** Six training runs (~2.5–3 h each, two at a time: ~8–9 h), then validation and
+test (~5 h). Measured before training: the camera's per-step cost.
+
+**Result (2026-10-23, D36).** Camera cost measured before training: 11.1 vs 10.5 ms per env
+step. Perfect-sensing behaviour unchanged (12 experiment-11 spawns replayed bit-identically).
+Validation (72 spawns, camera sensing): rock-blind baseline 67% (25% tipped); the rule's best
+settings 85% (`h_rock` 0.08, `k_block` 3, `unknown` free, chosen on tip-overs: 6% vs 8%), every
+`unknown`=block setting 10–11% (treating unseen ground as rock freezes the rover, then the
+escape reverses it into what it can't see); policy seeds 62–88% (seed 2 chosen, 88%, 3% tipped).
+Gate passed (85% vs 67%).
+
+| Fresh spawns (200 each) | rock-avoiding rule | policy | tip-overs (rule / policy) | timeouts (rule / policy) |
+|---|---|---|---|---|
+| delta hard | 90% | 90% | 13 / 6 | 6 / 15 |
+| delta unseen | **93%** | 68% | 2 / 5 | 12 / 59 |
+| site A hard | 87% | **88%** | 5 / 10 | 21 / 14 |
+| site A unseen | 88% | **94%** | 10 / 5 | 13 / 7 |
+| site B hard | **94%** | 90% | 2 / 13 | 9 / 7 |
+| site B unseen | 97% | **98%** | 0 / 1 | 6 / 3 |
+| **pooled (1,200)** | **91.8%** | 87.9% | 32 / 40 | 67 / 105 |
+
+Primary: policy-only 80, rule-only 126; gap −3.8 points (95% −6.2 to −1.5), McNemar p = 0.00165.
+**The learned policy is not shown to beat the rule; the rule is ahead.** (The frozen reading
+covered "policy ahead" and "not shown"; the rule being significantly ahead is reported as
+the result, as in experiment 11.) Secondary, hard spawns: policy perfect 88.3% → camera 89.2%,
+rule 88.8% → 90.7%; neither change significant. Local outputs: `runs/exp13_{val,test}.json`.
 
 ## Repo layout
 

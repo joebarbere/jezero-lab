@@ -15,8 +15,10 @@ hand-written baseline, with path plots and chase-camera video.
 
 **Where it stands (2026-10):** the learned policy **beats the rock-blind hand-written
 baseline on every test set, but not a hand-written controller that sees the same rocks**:
-that one comes within 5 points on the test sets (86% vs 91%, p = 0.11) and matches the
-policy on 600 fresh hard starts (88.7% vs 86.8%, p = 0.36; decision log D34, D35). It uses a small CNN over the terrain grids, trains on six sites along
+that one comes within 5 points on the test sets (86% vs 91%, p = 0.11), matches the
+policy on 600 fresh hard starts (88.7% vs 86.8%, p = 0.36), and **beats it when both see
+through a realistic forward camera** (91.8% vs 87.9% on 1,200 starts, p = 0.002; decision log
+D34–D36). `sensing='camera'` in `JezeroEnv` gives the camera view. It uses a small CNN over the terrain grids, trains on six sites along
 Perseverance's route, and is chosen from six seeds on a separate validation set. On
 held-out starts it reaches the goal 88% of the time on the delta among boulders (baseline
 50%) and 88–98% on the hard starts at two sites it never trained on (baseline 71–73%),
