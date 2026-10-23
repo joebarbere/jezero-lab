@@ -803,6 +803,63 @@ against the rock-avoiding baseline, not the rock-blind one.
 > the size of test decided in advance, removes that luck. Here the 13-point hard-start lead
 > shrank to −2.
 
+
+### D36. Experiment 13: under camera-like sensing, the rule beats the policy
+**Change.** D34–D35 used a perfect, all-round terrain map. Both controllers now read the map a
+forward depth camera builds (`sensing='camera'`: 87° field of view, 0.3–4 m, occlusion behind
+rocks, range-dependent noise, 0.2 s latency, masks of unseen cells). Six policy seeds were
+trained from scratch on it (D33's recipe, 1.5M steps); the rule's grid added an `unknown`-cell
+setting. Both were chosen on validation and tested once on 1,200 new spawns (seeds 5,000,000+,
+hard and unseen, 200 per test world). Protocol in PLAN.md, written before any run.
+
+Validation (72 spawns, camera sensing): rock-blind baseline 67% (25% tipped); the rule's best
+settings 85% (`h_rock` 0.08, `k_block` 3, `unknown` free, chosen on tip-overs: 6% vs 8%), every
+`unknown`=block setting 10–11% (treating unseen ground as rock freezes the rover, then the
+escape reverses it into what it can't see); policy seeds 62–88% (seed 2 chosen, 88%, 3% tipped).
+Gate passed (85% vs 67%).
+
+**Numbers** (test):
+
+| Fresh spawns (200 each) | rock-avoiding rule | policy | tip-overs (rule / policy) | timeouts (rule / policy) |
+|---|---|---|---|---|
+| delta hard | 90% | 90% | 13 / 6 | 6 / 15 |
+| delta unseen | **93%** | 68% | 2 / 5 | 12 / 59 |
+| site A hard | 87% | **88%** | 5 / 10 | 21 / 14 |
+| site A unseen | 88% | **94%** | 10 / 5 | 13 / 7 |
+| site B hard | **94%** | 90% | 2 / 13 | 9 / 7 |
+| site B unseen | 97% | **98%** | 0 / 1 | 6 / 3 |
+| **pooled (1,200)** | **91.8%** | 87.9% | 32 / 40 | 67 / 105 |
+
+Paired: policy-only 80, rule-only 126. Gap **−3.8 points** (95% −6.2 to −1.5), exact McNemar
+**p = 0.0017**: the rule is ahead.
+
+**Secondary** (600 hard spawns, same seeds, each controller's perfect-sensing version):
+policy 88.3% perfect → 89.2% camera (95% on the change −2.5 to +4.2 points); rule 88.8% → 90.7%
+(−1.1 to +4.8). **Realistic sensing costs neither anything measurable** here.
+
+**Conclusions.**
+1. **Learning does not beat the rule under realistic sensing either;** the rule is ahead by
+   1.5–6 points. The hypothesis that a rule built for perfect data would suffer more from a
+   limited view is not supported.
+2. **The camera view is enough for both.** A forward 4 m view with memory covers what driving
+   at 0.3 m/s needs; the all-round map wasn't doing much.
+3. **Where the gap comes from (descriptive, not a claim):** most of it is delta's unseen
+   segment (93% vs 68%; the policy timed out on 59 of 200). On the other five sets the two are
+   within 6 points either way. The policy's weakness there predates the camera: D32's delta
+   unseen was 78%, its lowest set.
+4. **Treating unseen ground as blocked is a trap** (10% at validation): a cautious rule that
+   can't see behind itself backs into what it can't see.
+
+**Decision.** The project's headline holds and strengthens: with the same information, a
+simple rock-avoiding rule matches or beats the trained policy, with a perfect map (D34–D35) and
+with a camera (D36). What this does **not** show is that learning can't win: one recipe, 1.5M
+steps, six seeds, with large seed spread (62–88% on validation).
+
+> **Explainer: why a negative result needs its sensitivity stated.** "The rule beats the
+> policy by 1.5–6 points" is a bound, not a law. It holds for this reward, this network and
+> this much training. A claim that RL can't beat the rule would need a training budget large
+> enough that more training stops helping, which this project hasn't shown.
+
 ---
 
 ## Lessons in one page
@@ -838,3 +895,5 @@ against the rock-avoiding baseline, not the rock-blind one.
     success rates held under perturbation.
 17. **Fewer, steadier updates can beat more, noisier ones** (D33): doubling the batch
     cut seed-to-seed spread at the same cost.
+18. **Give the baseline the same information, then make it realistic** (D34–D36): a rule
+    that sees the same rocks matched the policy, and under a realistic camera it was ahead.

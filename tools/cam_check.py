@@ -1,4 +1,5 @@
-"""Experiment 13 sensor checks (not a test of results)."""
+"""Experiment 13 sensor checks (not a test of results): which cells the camera sees, occlusion,
+field of view, and per-step cost.  jezero_env/run.sh python3 -m tools.cam_check"""
 import math, time
 import numpy as np
 from jezero_env.env import JezeroEnv, obs_layout, CameraMap
